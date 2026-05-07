@@ -29,13 +29,51 @@ coloured_fire_art = """
 """
 
 
-from datetime import date
+from datetime import date, timedelta
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
 from textual.widgets import Header, Footer, Static, Input, Button
 
 from studystreak.storage import load_data, save_data
+
+
+
+def calculate_current_streak(data):
+    study_dates = set()
+
+    for session in data["sessions"]:
+        study_dates.add(session["date"])
+
+    current_day = date.today()
+    streak_count = 0
+
+    while str(current_day) in study_dates:
+        streak_count += 1
+        current_day = current_day - timedelta(days=1)
+
+    return streak_count
+
+def calculate_today_minutes(data):
+    today_date = str(date.today())
+    total_minutes = 0
+
+    for session in data["sessions"]:
+        if session["date"] == today_date:
+            total_minutes += session["minutes"]
+
+    return total_minutes
+
+def calculate_today_sessions(data):
+    today_date = str(date.today())
+    total_sessions = 0
+
+    for session in data["sessions"]:
+        if session["date"] == today_date:
+            total_sessions += 1
+    
+    return total_sessions
+
 
 
 class StudyStreakApp(App):
@@ -53,6 +91,8 @@ class StudyStreakApp(App):
             yield Static("StudyStreak CLI", id="title")
             yield Static("Log your study session below.", id="subtitle")
 
+            yield Static("", id="dashboard")
+
             yield Input(placeholder="Subject, e.g. maths", id="subject-input")
             yield Input(placeholder="Minutess, e.g. 30", id="minutes-input")
 
@@ -64,6 +104,25 @@ class StudyStreakApp(App):
 
         yield Footer()
     
+
+    def on_mount(self):
+        self.update_dashboard()
+
+    def update_dashboard(self):
+        data = load_data()
+
+        streak_count = calculate_current_streak(data)
+        today_minutes = calculate_today_minutes(data)
+        today_sessions = calculate_today_sessions(data)
+
+        dashboard = self.query_one("#dashboard", Static)
+
+        dashboard.update(
+            f"[bold]Current streak:[/bold] {streak_count} days\n"
+            f"[bold] Studied today:[/bold] {today_minutes} minutes \n"
+            f"[bold]Sessions today:[/bold] {today_sessions}"
+        )
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         subject_input = self.query_one("#subject-input", Input)
         minutes_input = self.query_one("#minutes-input", Input)
@@ -106,6 +165,8 @@ class StudyStreakApp(App):
 
             data["sessions"].append(session)
             save_data(data)
+
+            self.update_dashboard()
 
             message.update(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
 
