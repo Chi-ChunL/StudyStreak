@@ -1,0 +1,65 @@
+Screen {
+    align: center middle;
+}
+
+#main-container {
+    width: 70;
+    height: auto;
+    border: round grey;
+    padding: 1 2;
+}
+
+#title {
+    text-align: center;
+    text-style: bold;
+    color: grey;
+    margin-bottom: 1;
+}
+
+#subtitle {
+    text-align: center;
+    color: white;
+    margin-bottom: 1;
+}
+
+Input {
+    margin-bottom: 1;
+}
+
+#button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+    color: grey;
+}
+
+Button {
+    margin: 0 1;
+    background: #1f1f1f;
+    color: #cfcfcf;
+    border: tall #555555;
+}
+
+Button:hover {
+    background: #2b2b2b;
+    color: white;
+    border: tall #888888;
+}
+
+#log-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#log-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}

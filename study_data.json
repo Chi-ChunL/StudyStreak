@@ -1,29 +1,9 @@
 {
     "sessions": [
         {
-            "subject": "physics",
-            "minutes": 45,
-            "date": "2026-05-04"
-        },
-        {
-            "subject": "maths",
-            "minutes": 20,
-            "date": "2026-05-04"
-        },
-        {
-            "subject": "physics",
-            "minutes": 45,
-            "date": "2026-05-04"
-        },
-        {
-            "subject": "maths",
-            "minutes": 20,
-            "date": "2026-05-04"
-        },
-        {
             "subject": "maths",
             "minutes": 30,
-            "date": "2026-05-04"
+            "date": "2026-05-06"
         }
     ]
 }
