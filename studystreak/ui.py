@@ -33,10 +33,18 @@ from datetime import date, timedelta, datetime
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
-from textual.widgets import Header, Footer, Static, Input, Button, TabbedContent, TabPane, Select
+from textual.widgets import (
+    Header,
+    Footer,
+    Static,
+    Input,
+    Button,
+    TabbedContent,
+    TabPane,
+    Select,
+)
 
 from studystreak.storage import load_data, save_data
-
 
 
 def calculate_current_streak(data):
@@ -54,6 +62,7 @@ def calculate_current_streak(data):
 
     return streak_count
 
+
 def calculate_today_minutes(data):
     today_date = str(date.today())
     total_minutes = 0
@@ -64,6 +73,7 @@ def calculate_today_minutes(data):
 
     return total_minutes
 
+
 def calculate_today_sessions(data):
     today_date = str(date.today())
     total_sessions = 0
@@ -71,15 +81,16 @@ def calculate_today_sessions(data):
     for session in data["sessions"]:
         if session["date"] == today_date:
             total_sessions += 1
-    
+
     return total_sessions
+
 
 def get_recent_sessions(data, limit=5):
     sessions = data["sessions"]
-    
+
     if len(sessions) == 0:
-        return "No study session logged yet."
-    
+        return "No study sessions logged yet."
+
     recent_sessions = sessions[-limit:]
     recent_sessions.reverse()
 
@@ -91,14 +102,12 @@ def get_recent_sessions(data, limit=5):
         session_date = session["date"]
 
         lines.append(f"{subject} - {minutes} minutes - {session_date}")
-    
+
     return "\n".join(lines)
+
 
 def get_session_options(data):
     sessions = data["sessions"]
-
-    if len(sessions) == 0:
-        return [("No sessions avaliable", -1)]
 
     options = []
 
@@ -108,11 +117,12 @@ def get_session_options(data):
         session_date = session["date"]
 
         label = f"{session_date} - {subject} - {minutes} minutes"
-        options.append((label, index))
-    
+        options.append((label, str(index)))
+
     options.reverse()
 
     return options
+
 
 class StudyStreakApp(App):
 
@@ -120,7 +130,7 @@ class StudyStreakApp(App):
 
     BINDINGS = [
         ("escape", "escape_quit", "Quit"),
-        ("q", "quit", "Quit")
+        ("q", "quit", "Quit"),
     ]
 
     last_escape_time = None
@@ -146,7 +156,7 @@ class StudyStreakApp(App):
                     with Horizontal(id="button-row"):
                         yield Button("Log Session", id="log-button")
                         yield Button("Clear", id="clear-button")
-                
+
                     yield Static("", id="message")
 
                 with TabPane("Manage Session", id="manage-tab"):
@@ -155,16 +165,15 @@ class StudyStreakApp(App):
                     yield Select(
                         options=[],
                         id="session-select",
-                        prompt="Choose a session"
+                        prompt="Choose a session",
                     )
 
                     with Horizontal(id="manage-button-row"):
                         yield Button("Delete Selected", id="delete-selected-button")
-                    
+
                     yield Static("", id="manage-message")
 
         yield Footer()
-    
 
     def on_mount(self):
         self.update_dashboard()
@@ -182,25 +191,29 @@ class StudyStreakApp(App):
 
         dashboard.update(
             f"[bold]Current streak:[/bold] {streak_count} days\n"
-            f"[bold] Studied today:[/bold] {today_minutes} minutes \n"
+            f"[bold]Studied today:[/bold] {today_minutes} minutes\n"
             f"[bold]Sessions today:[/bold] {today_sessions}"
         )
 
         recent_sessions.update(get_recent_sessions(data))
 
         session_select.set_options(get_session_options(data))
-        session_select.value = Select.BLANK
+        session_select.clear()
 
     def action_escape_quit(self):
         current_time = datetime.now()
 
-        message = self.query_one("#message", Static)
+        try:
+            message = self.query_one("#message", Static)
+        except Exception:
+            self.exit()
+            return
 
         if self.last_escape_time is None:
             self.last_escape_time = current_time
             message.update("[yellow]Press Esc again to quit.[/yellow]")
             return
-        
+
         time_difference = current_time - self.last_escape_time
 
         if time_difference.total_seconds() <= 2:
@@ -209,60 +222,71 @@ class StudyStreakApp(App):
             self.last_escape_time = current_time
             message.update("[yellow]Press Esc again to quit.[/yellow]")
 
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        subject_input = self.query_one("#subject-input", Input)
-        minutes_input = self.query_one("#minutes-input", Input)
-        message = self.query_one("#message", Static)
 
         if event.button.id == "clear-button":
+            subject_input = self.query_one("#subject-input", Input)
+            minutes_input = self.query_one("#minutes-input", Input)
+            message = self.query_one("#message", Static)
+
             subject_input.value = ""
             minutes_input.value = ""
             message.update("")
             return
-        
+
         if event.button.id == "delete-selected-button":
             session_select = self.query_one("#session-select", Select)
             manage_message = self.query_one("#manage-message", Static)
 
             selected_index = session_select.value
-            
-            if selected_index == Select.BLANK or selected_index == -1:
+            data = load_data()
+
+            if len(data["sessions"]) == 0:
+                manage_message.update("[yellow]There are no sessions to delete.[/yellow]")
+                self.update_dashboard()
+                return
+
+            if selected_index is None or selected_index is False:
                 manage_message.update("[yellow]Please select a session to delete.[/yellow]")
                 return
-            
-            data = load_data()
+
+            selected_index = int(selected_index)
 
             if selected_index < 0 or selected_index >= len(data["sessions"]):
                 manage_message.update("[red]Selected session could not be found.[/red]")
                 self.update_dashboard()
                 return
-            
+
             deleted_session = data["sessions"].pop(selected_index)
             save_data(data)
-
-            self.update_dashboard()
 
             subject = deleted_session["subject"]
             minutes = deleted_session["minutes"]
             session_date = deleted_session["date"]
 
+            self.update_dashboard()
+
             manage_message.update(
-                f"[yellow]Deleted: [yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]"
+                f"[yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]"
             )
             return
 
         if event.button.id == "log-button":
+            subject_input = self.query_one("#subject-input", Input)
+            minutes_input = self.query_one("#minutes-input", Input)
+            message = self.query_one("#message", Static)
+
             subject = subject_input.value.strip()
             minutes_text = minutes_input.value.strip()
 
             if subject == "":
                 message.update("[red]Please enter a subject.[/red]")
                 return
+
             if minutes_text == "":
                 message.update("[red]Please enter the number of minutes.[/red]")
                 return
-            
+
             if not minutes_text.isdigit():
                 message.update("[red]Minutes must be a whole number.[/red]")
                 return
@@ -278,7 +302,7 @@ class StudyStreakApp(App):
             session = {
                 "subject": subject.lower(),
                 "minutes": minutes,
-                "date": str(date.today())
+                "date": str(date.today()),
             }
 
             data["sessions"].append(session)
@@ -290,5 +314,3 @@ class StudyStreakApp(App):
 
             subject_input.value = ""
             minutes_input.value = ""
-
-

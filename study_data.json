@@ -1,9 +1,3 @@
 {
-    "sessions": [
-        {
-            "subject": "maths",
-            "minutes": 30,
-            "date": "2026-05-06"
-        }
-    ]
+    "sessions": []
 }
