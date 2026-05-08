@@ -70,3 +70,10 @@ Button:hover {
     padding: 1;
     margin-bottom: 1;
 }
+
+#recent-sessions {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}

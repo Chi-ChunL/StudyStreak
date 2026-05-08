@@ -29,7 +29,7 @@ coloured_fire_art = """
 """
 
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
@@ -74,15 +74,36 @@ def calculate_today_sessions(data):
     
     return total_sessions
 
+def get_recent_sessions(data, limit=5):
+    sessions = data["sessions"]
+    
+    if len(sessions) == 0:
+        return "No study session logged yet."
+    
+    recent_sessions = sessions[-limit:]
+    recent_sessions.reverse()
 
+    lines = ["[bold]Recent study sessions[/bold]"]
+
+    for session in recent_sessions:
+        subject = session["subject"]
+        minutes = session["minutes"]
+        session_date = session["date"]
+
+        lines.append(f"{subject} - {minutes} minutes - {session_date}")
+    
+    return "\n".join(lines)
 
 class StudyStreakApp(App):
 
     CSS_PATH = "app.tcss"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
+        ("escape", "escape_quit", "Quit"),
+        ("q", "quit", "Quit")
     ]
+
+    last_escape_time = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -92,9 +113,10 @@ class StudyStreakApp(App):
             yield Static("Log your study session below.", id="subtitle")
 
             yield Static("", id="dashboard")
+            yield Static("", id="recent-sessions")
 
             yield Input(placeholder="Subject, e.g. maths", id="subject-input")
-            yield Input(placeholder="Minutess, e.g. 30", id="minutes-input")
+            yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
 
             with Horizontal(id="button-row"):
                 yield Button("Log Session", id="log-button")
@@ -116,12 +138,35 @@ class StudyStreakApp(App):
         today_sessions = calculate_today_sessions(data)
 
         dashboard = self.query_one("#dashboard", Static)
+        recent_sessions = self.query_one("#recent-sessions", Static)
 
         dashboard.update(
             f"[bold]Current streak:[/bold] {streak_count} days\n"
             f"[bold] Studied today:[/bold] {today_minutes} minutes \n"
             f"[bold]Sessions today:[/bold] {today_sessions}"
         )
+
+        recent_sessions.update(get_recent_sessions(data))
+
+
+    def action_escape_quit(self):
+        current_time = datetime.now()
+
+        message = self.query_one("#message", Static)
+
+        if self.last_escape_time is None:
+            self.last_escape_time = current_time
+            message.update("[yellow]Press Esc again to quit.[/yellow]")
+            return
+        
+        time_difference = current_time - self.last_escape_time
+
+        if time_difference.total_seconds() <= 2:
+            self.exit()
+        else:
+            self.last_escape_time = current_time
+            message.update("[yellow]Press Esc again to quit.[/yellow]")
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         subject_input = self.query_one("#subject-input", Input)
