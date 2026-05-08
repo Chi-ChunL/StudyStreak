@@ -3,7 +3,7 @@ Screen {
 }
 
 #main-container {
-    width: 70;
+    width: 80;
     height: auto;
     border: round grey;
     padding: 1 2;
@@ -77,3 +77,18 @@ Button:hover {
     padding: 1;
     margin-bottom: 1;
 }
+
+TabbedContent {
+    height: auto;
+}
+
+TabPane {
+    padding: 1;
+}
+
+#log-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+

@@ -33,7 +33,7 @@ from datetime import date, timedelta, datetime
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
-from textual.widgets import Header, Footer, Static, Input, Button
+from textual.widgets import Header, Footer, Static, Input, Button, TabbedContent, TabPane
 
 from studystreak.storage import load_data, save_data
 
@@ -110,19 +110,24 @@ class StudyStreakApp(App):
 
         with Container(id="main-container"):
             yield Static("StudyStreak CLI", id="title")
-            yield Static("Log your study session below.", id="subtitle")
+            yield Static("Track your study streak and log your progress.", id="subtitle")
 
-            yield Static("", id="dashboard")
-            yield Static("", id="recent-sessions")
+            with TabbedContent(initial="dashboard-tab"):
+                with TabPane("Dashboard", id="dashboard-tab"):
+                    yield Static("", id="dashboard")
+                    yield Static("", id="recent-sessions")
 
-            yield Input(placeholder="Subject, e.g. maths", id="subject-input")
-            yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
+                with TabPane("Log Session", id="log-tab"):
+                    yield Static("Log your study session below.", id="log-title")
 
-            with Horizontal(id="button-row"):
-                yield Button("Log Session", id="log-button")
-                yield Button("Clear", id="clear-button")
-            
-            yield Static("", id="message")
+                    yield Input(placeholder="Subject, e.g. maths", id="subject-input")
+                    yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
+
+                    with Horizontal(id="button-row"):
+                        yield Button("Log Session", id="log-button")
+                        yield Button("Clear", id="clear-button")
+                
+                    yield Static("", id="message")
 
         yield Footer()
     
