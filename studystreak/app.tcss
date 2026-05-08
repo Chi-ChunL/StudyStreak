@@ -92,3 +92,37 @@ TabPane {
     margin-bottom: 1;
 }
 
+#manage-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#session-select {
+    margin-bottom: 1;
+}
+
+
+#manage-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#delete-selected-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#delete-selected-button:hover {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#manage-message {
+    margin-top: 1;
+    text-align: center;
+    color: yellow;
+}

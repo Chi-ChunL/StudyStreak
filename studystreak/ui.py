@@ -33,7 +33,7 @@ from datetime import date, timedelta, datetime
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
-from textual.widgets import Header, Footer, Static, Input, Button, TabbedContent, TabPane
+from textual.widgets import Header, Footer, Static, Input, Button, TabbedContent, TabPane, Select
 
 from studystreak.storage import load_data, save_data
 
@@ -94,6 +94,26 @@ def get_recent_sessions(data, limit=5):
     
     return "\n".join(lines)
 
+def get_session_options(data):
+    sessions = data["sessions"]
+
+    if len(sessions) == 0:
+        return [("No sessions avaliable", -1)]
+
+    options = []
+
+    for index, session in enumerate(sessions):
+        subject = session["subject"]
+        minutes = session["minutes"]
+        session_date = session["date"]
+
+        label = f"{session_date} - {subject} - {minutes} minutes"
+        options.append((label, index))
+    
+    options.reverse()
+
+    return options
+
 class StudyStreakApp(App):
 
     CSS_PATH = "app.tcss"
@@ -129,6 +149,20 @@ class StudyStreakApp(App):
                 
                     yield Static("", id="message")
 
+                with TabPane("Manage Session", id="manage-tab"):
+                    yield Static("Select a study session to delete.", id="manage-title")
+
+                    yield Select(
+                        options=[],
+                        id="session-select",
+                        prompt="Choose a session"
+                    )
+
+                    with Horizontal(id="manage-button-row"):
+                        yield Button("Delete Selected", id="delete-selected-button")
+                    
+                    yield Static("", id="manage-message")
+
         yield Footer()
     
 
@@ -144,6 +178,7 @@ class StudyStreakApp(App):
 
         dashboard = self.query_one("#dashboard", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
+        session_select = self.query_one("#session-select", Select)
 
         dashboard.update(
             f"[bold]Current streak:[/bold] {streak_count} days\n"
@@ -153,6 +188,8 @@ class StudyStreakApp(App):
 
         recent_sessions.update(get_recent_sessions(data))
 
+        session_select.set_options(get_session_options(data))
+        session_select.value = Select.BLANK
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -184,6 +221,37 @@ class StudyStreakApp(App):
             message.update("")
             return
         
+        if event.button.id == "delete-selected-button":
+            session_select = self.query_one("#session-select", Select)
+            manage_message = self.query_one("#manage-message", Static)
+
+            selected_index = session_select.value
+            
+            if selected_index == Select.BLANK or selected_index == -1:
+                manage_message.update("[yellow]Please select a session to delete.[/yellow]")
+                return
+            
+            data = load_data()
+
+            if selected_index < 0 or selected_index >= len(data["sessions"]):
+                manage_message.update("[red]Selected session could not be found.[/red]")
+                self.update_dashboard()
+                return
+            
+            deleted_session = data["sessions"].pop(selected_index)
+            save_data(data)
+
+            self.update_dashboard()
+
+            subject = deleted_session["subject"]
+            minutes = deleted_session["minutes"]
+            session_date = deleted_session["date"]
+
+            manage_message.update(
+                f"[yellow]Deleted: [yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]"
+            )
+            return
+
         if event.button.id == "log-button":
             subject = subject_input.value.strip()
             minutes_text = minutes_input.value.strip()
