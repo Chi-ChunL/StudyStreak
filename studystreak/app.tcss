@@ -168,3 +168,26 @@ TabPane {
     text-align: center;
     color: yellow;
 }
+
+#streak-effect-box {
+    width: 45;
+    height: auto;
+    border: round orange;
+    background: #111111;
+    padding: 1 2;
+    align: center middle;
+}
+
+#streak-fire {
+    text-align: center;
+}
+
+#streak-effect-title {
+    text-align: center;
+    margin-top: 1;
+}
+
+#streak-effect-message {
+    text-align: center;
+    margin-top: 1;
+}

@@ -31,6 +31,7 @@ coloured_fire_art = """
 
 from datetime import date, timedelta, datetime
 
+from textual.screen import ModalScreen
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
 from textual.widgets import (
@@ -137,6 +138,27 @@ def get_session_options(data):
 
     return options
 
+class StreakEffectScreen(ModalScreen):
+    def __init__(self, streak_count):
+        super().__init__()
+        self.streak_count = streak_count
+
+    def compose(self) -> ComposeResult:
+        with Container(id="streak-effect-box"):
+            yield Static(coloured_fire_art, id="streak-fire")
+            yield Static(
+                f"[bold orange1]Streak protected: {self.streak_count} days[/bold orange1]",
+                id="streak-effect-title"
+            )
+            yield Static(
+                f"[green]Your study session has been logged.[/green]",
+                id="streak-effect-message"
+            )
+    def on_mount(self):
+        self.set_timer(2.5, self.close_effect)
+
+    def close_effect(self):
+        self.app.pop_screen()
 
 class StudyStreakApp(App):
 
@@ -251,6 +273,15 @@ class StudyStreakApp(App):
             self.last_escape_time = current_time
             global_message.update("[yellow]Press Esc again to quit.[/yellow]")
 
+
+    def show_streak_effect(self, streak_count):
+        if streak_count > 0:
+            self.push_screen(StreakEffectScreen(streak_count))
+        else:
+            global_message = self.query_one("#global-message", Static)
+            global_message.update("[green]Your study session has been logged.[/green]")
+            self.set_timer(4, lambda: global_message.update(""))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "clear-button":
@@ -338,6 +369,10 @@ class StudyStreakApp(App):
             save_data(data)
 
             self.update_dashboard()
+            
+            updated_data = load_data()
+            streak_count = calculate_current_streak(updated_data)
+            self.show_streak_effect(streak_count)
 
             message.update(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
 
