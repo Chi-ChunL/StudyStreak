@@ -162,3 +162,9 @@ TabPane {
     align: center middle;
     margin-top: 1;
 }
+
+#global-message {
+    margin-top: 1;
+    text-align: center;
+    color: yellow;
+}

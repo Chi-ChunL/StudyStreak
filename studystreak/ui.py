@@ -144,7 +144,6 @@ class StudyStreakApp(App):
 
     BINDINGS = [
         ("escape", "escape_quit", "Quit"),
-        ("q", "quit", "Quit"),
     ]
 
     last_escape_time = None
@@ -200,6 +199,8 @@ class StudyStreakApp(App):
                     
                     yield Static("", id="settings-message")
 
+            yield Static("", id="global-message")
+
         yield Footer()
 
     def on_mount(self):
@@ -235,16 +236,11 @@ class StudyStreakApp(App):
 
     def action_escape_quit(self):
         current_time = datetime.now()
-
-        try:
-            message = self.query_one("#message", Static)
-        except Exception:
-            self.exit()
-            return
+        global_message = self.query_one("#global-message", Static)
 
         if self.last_escape_time is None:
             self.last_escape_time = current_time
-            message.update("[yellow]Press Esc again to quit.[/yellow]")
+            global_message.update("[yellow]Press Esc again to quit.[/yellow]")
             return
 
         time_difference = current_time - self.last_escape_time
@@ -253,7 +249,7 @@ class StudyStreakApp(App):
             self.exit()
         else:
             self.last_escape_time = current_time
-            message.update("[yellow]Press Esc again to quit.[/yellow]")
+            global_message.update("[yellow]Press Esc again to quit.[/yellow]")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
@@ -347,7 +343,9 @@ class StudyStreakApp(App):
 
             subject_input.value = ""
             minutes_input.value = ""
-        
+            return
+
+
         if event.button.id == "save-goal-button":
             goal_input = self.query_one("#weekly-goal-input", Input)
             settings_message = self.query_one("#settings-message", Static)
