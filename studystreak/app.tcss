@@ -126,3 +126,39 @@ TabPane {
     text-align: center;
     color: yellow;
 }
+
+#settings-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#weekly-goal-input {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#save-goal-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#save-goal-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#settings-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+#settings-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
