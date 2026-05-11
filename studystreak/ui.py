@@ -31,9 +31,9 @@ coloured_fire_art = """
 
 from datetime import date, timedelta, datetime
 
-from textual.screen import ModalScreen
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
+from textual.screen import ModalScreen
 from textual.widgets import (
     Header,
     Footer,
@@ -86,6 +86,56 @@ def calculate_today_sessions(data):
     return total_sessions
 
 
+def calculate_weekly_minutes(data):
+    today = date.today()
+    start_of_week = today - timedelta(days=today.weekday())
+
+    total_minutes = 0
+
+    for session in data["sessions"]:
+        session_date = date.fromisoformat(session["date"])
+
+        if start_of_week <= session_date <= today:
+            total_minutes += session["minutes"]
+
+    return total_minutes
+
+
+def create_progress_bar(current, goal, length=20):
+    if goal <= 0:
+        return "[--------------------] 0%"
+
+    progress = current / goal
+
+    if progress > 1:
+        progress = 1
+
+    filled_length = int(progress * length)
+    empty_length = length - filled_length
+
+    bar = "#" * filled_length + "-" * empty_length
+    percentage = int(progress * 100)
+
+    return f"[{bar}] {percentage}%"
+
+
+def get_weekly_goal_status(current, goal):
+    if current >= goal:
+        return "[green]Completed[/green]"
+
+    return "[yellow]Keep going[/yellow]"
+
+
+def has_studied_today(data):
+    today_date = str(date.today())
+
+    for session in data["sessions"]:
+        if session["date"] == today_date:
+            return True
+
+    return False
+
+
 def get_recent_sessions(data, limit=5):
     sessions = data["sessions"]
 
@@ -106,20 +156,6 @@ def get_recent_sessions(data, limit=5):
 
     return "\n".join(lines)
 
-def calculate_weekly_minutes(data):
-    today = date.today()
-
-    start_of_week = today - timedelta(days=today.weekday())
-
-    total_minutes = 0
-
-    for session in data["sessions"]:
-        session_date = date.fromisoformat(session["date"])
-
-        if start_of_week <= session_date <= today:
-            total_minutes += session["minutes"]
-        
-    return total_minutes
 
 def get_session_options(data):
     sessions = data["sessions"]
@@ -138,6 +174,18 @@ def get_session_options(data):
 
     return options
 
+
+def get_subject_options(data):
+    subjects = data["subjects"]
+
+    options = []
+
+    for subject in subjects:
+        options.append((subject, subject))
+
+    return options
+
+
 class StreakEffectScreen(ModalScreen):
     def __init__(self, streak_count):
         super().__init__()
@@ -148,17 +196,19 @@ class StreakEffectScreen(ModalScreen):
             yield Static(coloured_fire_art, id="streak-fire")
             yield Static(
                 f"[bold orange1]Streak protected: {self.streak_count} days[/bold orange1]",
-                id="streak-effect-title"
+                id="streak-effect-title",
             )
             yield Static(
-                f"[green]Your study session has been logged.[/green]",
-                id="streak-effect-message"
+                "[green]Your first study session today has been logged.[/green]",
+                id="streak-effect-message",
             )
+
     def on_mount(self):
         self.set_timer(2.5, self.close_effect)
 
     def close_effect(self):
         self.app.pop_screen()
+
 
 class StudyStreakApp(App):
 
@@ -185,7 +235,12 @@ class StudyStreakApp(App):
                 with TabPane("Log Session", id="log-tab"):
                     yield Static("Log your study session below.", id="log-title")
 
-                    yield Input(placeholder="Subject, e.g. maths", id="subject-input")
+                    yield Select(
+                        options=[],
+                        id="subject-select",
+                        prompt="Choose a subject",
+                    )
+
                     yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
 
                     with Horizontal(id="button-row"):
@@ -213,13 +268,25 @@ class StudyStreakApp(App):
 
                     yield Input(
                         placeholder="Weekly goal in minutes, e.g. 300",
-                        id="weekly-goal-input"
+                        id="weekly-goal-input",
                     )
 
                     with Horizontal(id="settings-button-row"):
                         yield Button("Save Goal", id="save-goal-button")
-                    
+
                     yield Static("", id="settings-message")
+
+                    yield Static("Add a subject.", id="subject-settings-title")
+
+                    yield Input(
+                        placeholder="Subject name, e.g. maths",
+                        id="new-subject-input",
+                    )
+
+                    with Horizontal(id="subject-button-row"):
+                        yield Button("Add Subject", id="add-subject-button")
+
+                    yield Static("", id="subject-message")
 
             yield Static("", id="global-message")
 
@@ -236,10 +303,13 @@ class StudyStreakApp(App):
         today_sessions = calculate_today_sessions(data)
         weekly_minutes = calculate_weekly_minutes(data)
         weekly_goal = data["weekly_goal"]
+        weekly_progress_bar = create_progress_bar(weekly_minutes, weekly_goal)
+        weekly_goal_status = get_weekly_goal_status(weekly_minutes, weekly_goal)
 
         dashboard = self.query_one("#dashboard", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
         session_select = self.query_one("#session-select", Select)
+        subject_select = self.query_one("#subject-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
@@ -248,13 +318,18 @@ class StudyStreakApp(App):
             f"[bold]Current streak:[/bold] {streak_count} days\n"
             f"[bold]Studied today:[/bold] {today_minutes} minutes\n"
             f"[bold]Sessions today:[/bold] {today_sessions}\n"
-            f"[bold]Weekly goal:[/bold] {weekly_minutes} / {weekly_goal} minutes"
+            f"[bold]Weekly goal:[/bold] {weekly_minutes} / {weekly_goal} minutes\n"
+            f"[bold]Progress:[/bold] {weekly_progress_bar}\n"
+            f"[bold]Weekly goal status:[/bold] {weekly_goal_status}"
         )
 
         recent_sessions.update(get_recent_sessions(data))
 
         session_select.set_options(get_session_options(data))
         session_select.clear()
+
+        subject_select.set_options(get_subject_options(data))
+        subject_select.clear()
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -273,7 +348,6 @@ class StudyStreakApp(App):
             self.last_escape_time = current_time
             global_message.update("[yellow]Press Esc again to quit.[/yellow]")
 
-
     def show_streak_effect(self, streak_count):
         if streak_count > 0:
             self.push_screen(StreakEffectScreen(streak_count))
@@ -285,11 +359,11 @@ class StudyStreakApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "clear-button":
-            subject_input = self.query_one("#subject-input", Input)
+            subject_select = self.query_one("#subject-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)
             message = self.query_one("#message", Static)
 
-            subject_input.value = ""
+            subject_select.clear()
             minutes_input.value = ""
             message.update("")
             return
@@ -331,16 +405,76 @@ class StudyStreakApp(App):
             )
             return
 
+        if event.button.id == "save-goal-button":
+            goal_input = self.query_one("#weekly-goal-input", Input)
+            settings_message = self.query_one("#settings-message", Static)
+
+            goal_text = goal_input.value.strip()
+
+            if goal_text == "":
+                settings_message.update("[red]Please enter a weekly goal.[/red]")
+                return
+
+            if not goal_text.isdigit():
+                settings_message.update("[red]Weekly goal must be a whole number.[/red]")
+                return
+
+            weekly_goal = int(goal_text)
+
+            if weekly_goal <= 0:
+                settings_message.update("[red]Weekly goal must be more than 0.[/red]")
+                return
+
+            data = load_data()
+            data["weekly_goal"] = weekly_goal
+            save_data(data)
+
+            self.update_dashboard()
+
+            settings_message.update(
+                f"[green]Weekly goal updated to {weekly_goal} minutes.[/green]"
+            )
+
+            goal_input.value = ""
+            return
+
+        if event.button.id == "add-subject-button":
+            new_subject_input = self.query_one("#new-subject-input", Input)
+            subject_message = self.query_one("#subject-message", Static)
+
+            new_subject = new_subject_input.value.strip().lower()
+
+            if new_subject == "":
+                subject_message.update("[red]Please enter a subject name.[/red]")
+                return
+
+            data = load_data()
+
+            if new_subject in data["subjects"]:
+                subject_message.update("[yellow]That subject already exists.[/yellow]")
+                return
+
+            data["subjects"].append(new_subject)
+            data["subjects"].sort()
+
+            save_data(data)
+
+            self.update_dashboard()
+
+            subject_message.update(f"[green]Added subject: {new_subject}[/green]")
+            new_subject_input.value = ""
+            return
+
         if event.button.id == "log-button":
-            subject_input = self.query_one("#subject-input", Input)
+            subject_select = self.query_one("#subject-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)
             message = self.query_one("#message", Static)
 
-            subject = subject_input.value.strip()
+            subject = subject_select.value
             minutes_text = minutes_input.value.strip()
 
-            if subject == "":
-                message.update("[red]Please enter a subject.[/red]")
+            if subject is None or subject is False:
+                message.update("[red]Please choose a subject.[/red]")
                 return
 
             if minutes_text == "":
@@ -358,9 +492,10 @@ class StudyStreakApp(App):
                 return
 
             data = load_data()
+            already_studied_today = has_studied_today(data)
 
             session = {
-                "subject": subject.lower(),
+                "subject": str(subject).lower(),
                 "minutes": minutes,
                 "date": str(date.today()),
             }
@@ -369,48 +504,15 @@ class StudyStreakApp(App):
             save_data(data)
 
             self.update_dashboard()
-            
+
             updated_data = load_data()
             streak_count = calculate_current_streak(updated_data)
-            self.show_streak_effect(streak_count)
+
+            if not already_studied_today:
+                self.show_streak_effect(streak_count)
 
             message.update(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
 
-            subject_input.value = ""
+            subject_select.clear()
             minutes_input.value = ""
             return
-
-
-        if event.button.id == "save-goal-button":
-            goal_input = self.query_one("#weekly-goal-input", Input)
-            settings_message = self.query_one("#settings-message", Static)
-
-            goal_text = goal_input.value.strip()
-
-            if goal_text == "":
-                settings_message.update("[red]Please enter a weekly goal.[/red]")
-                return
-            
-            if not goal_text.isdigit():
-                settings_message.update("[red]Weekly goal must be a whole number.[/red]")
-                return
-            
-            weekly_goal = int(goal_text)
-
-            if weekly_goal <= 0:
-                settings_message.update("[red]Weekly goal must be more than 0.[/red]")
-                return
-            
-            data = load_data()
-            data["weekly_goal"] = weekly_goal
-            save_data(data)
-
-            self.update_dashboard()
-
-            settings_message.update(
-                f"[green]Weekly goal updated to {weekly_goal} minutes.[/green]"
-            )
-
-            goal_input.value = ""
-            return
-            

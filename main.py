@@ -7,13 +7,32 @@ from datetime import date, timedelta
 from studystreak.storage import load_data, save_data
 from studystreak.ui import plain_fire_art, coloured_fire_art, StudyStreakApp
 
+
 app = typer.Typer()
 console = Console()
 
 
+def calculate_streak(data):
+    study_dates = set()
+
+    for session in data["sessions"]:
+        study_dates.add(session["date"])
+
+    current_day = date.today()
+    streak_count = 0
+
+    while str(current_day) in study_dates:
+        streak_count += 1
+        current_day = current_day - timedelta(days=1)
+
+    return streak_count
+
+
 @app.command()
-# log a study session manually
 def log(subject: str, minutes: int):
+    """
+    Log a study session from the command line.
+    """
     if minutes <= 0:
         console.print("[red]Minutes must be more than 0.[/red]")
         return
@@ -23,27 +42,27 @@ def log(subject: str, minutes: int):
     session = {
         "subject": subject.lower(),
         "minutes": minutes,
-        "date": str(date.today())
+        "date": str(date.today()),
     }
 
     data["sessions"].append(session)
     save_data(data)
 
-    console.print(f"[green]Logged {minutes} minutes of {subject} study![/green]")
+    console.print(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
 
 
 @app.command()
-# show all study sessions completed today
 def today():
-
+    """
+    Show today's study sessions.
+    """
     data = load_data()
     today_date = str(date.today())
 
-    today_sessions = []
-
-    for session in data["sessions"]:
-        if session["date"] == today_date:
-            today_sessions.append(session)
+    today_sessions = [
+        session for session in data["sessions"]
+        if session["date"] == today_date
+    ]
 
     if len(today_sessions) == 0:
         console.print("[yellow]You have not studied today yet.[/yellow]")
@@ -60,54 +79,12 @@ def today():
 
 
 @app.command()
-# show total study time for each subject
-def stats():
-
-    data = load_data()
-
-    if len(data["sessions"]) == 0:
-        console.print("[yellow]No study sessions logged yet.[/yellow]")
-        return
-
-    subject_totals = {}
-
-    for session in data["sessions"]:
-        subject = session["subject"]
-        minutes = session["minutes"]
-
-        if subject not in subject_totals:
-            subject_totals[subject] = 0
-
-        subject_totals[subject] += minutes
-
-    console.print("[bold cyan]Study Statistics[/bold cyan]")
-
-    for subject, minutes in subject_totals.items():
-        hours = minutes // 60
-        remaining_minutes = minutes % 60
-
-        console.print(f"- {subject}: {hours}h {remaining_minutes}m")
-
-
-@app.command()
-# show the current study streak with ASCII art
 def streak():
-
+    """
+    Show the current study streak.
+    """
     data = load_data()
-
-    streak_count = 0
-
-    if len(data["sessions"]) > 0:
-        study_dates = set()
-
-        for session in data["sessions"]:
-            study_dates.add(session["date"])
-
-        current_day = date.today()
-
-        while str(current_day) in study_dates:
-            streak_count += 1
-            current_day = current_day - timedelta(days=1)
+    streak_count = calculate_streak(data)
 
     if streak_count == 0:
         message = f"""
@@ -144,16 +121,19 @@ Great work. Your consistency is building.
         Panel(
             Align.center(message),
             title="StudyStreak",
-            border_style=border_colour
+            border_style=border_colour,
         )
     )
 
 
 @app.command()
-#open textual study logging interface
 def ui():
+    """
+    Open the StudyStreak Textual interface.
+    """
     study_app = StudyStreakApp()
     study_app.run()
+
 
 if __name__ == "__main__":
     app()

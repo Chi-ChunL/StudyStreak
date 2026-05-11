@@ -5,29 +5,33 @@ from pathlib import Path
 DATA_FILE = Path("study_data.json")
 
 
-def get_deafault_data():
+def get_default_data():
     return {
         "sessions": [],
-        "weekly_goal": 300
+        "weekly_goal": 300,
+        "subjects": []
     }
 
-#load the study data from the json file
+
 def load_data():
     if not DATA_FILE.exists():
-        return get_deafault_data()
-    
+        return get_default_data()
+
     with open(DATA_FILE, "r") as file:
-        return json.load(file)
-    
+        data = json.load(file)
+
     if "sessions" not in data:
         data["sessions"] = []
-    
+
     if "weekly_goal" not in data:
-        data["weekly_goal"] = []
-    
+        data["weekly_goal"] = 300
+
+    if "subjects" not in data:
+        data["subjects"] = []
+
     return data
 
-#saves study data into json file 
+
 def save_data(data):
     with open(DATA_FILE, "w") as file:
         json.dump(data, file, indent=4)

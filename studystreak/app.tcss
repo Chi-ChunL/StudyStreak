@@ -191,3 +191,42 @@ TabPane {
     text-align: center;
     margin-top: 1;
 }
+
+#subject-select {
+    margin-bottom: 1;
+}
+
+#subject-settings-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-top: 2;
+    margin-bottom: 1;
+}
+
+#new-subject-input {
+    margin-bottom: 1;
+}
+
+#subject-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#add-subject-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#add-subject-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#subject-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
