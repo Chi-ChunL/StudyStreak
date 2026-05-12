@@ -32,7 +32,7 @@ coloured_fire_art = """
 from datetime import date, timedelta, datetime
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Header,
@@ -300,29 +300,39 @@ class StudyStreakApp(App):
                     yield Static("", id="manage-message")
 
                 with TabPane("Settings", id="settings-tab"):
-                    yield Static("Set your weekly study goal.", id="settings-title")
+                    yield Static("Settings", id="settings-title")
 
-                    yield Input(
-                        placeholder="Weekly goal in minutes, e.g. 300",
-                        id="weekly-goal-input",
-                    )
+                    with Horizontal(id="settings-layout"):
+                        with Vertical(id="settings-sidebar"):
+                            yield Button("Weekly Goal", id="settings-weekly-button")
+                            yield Button("Subjects", id="settings-subjects-button")
 
-                    with Horizontal(id="settings-button-row"):
-                        yield Button("Save Goal", id="save-goal-button")
+                        with Vertical(id="settings-content"):
+                            with Vertical(id="weekly-goal-panel"):
+                                yield Static("Set your weekly study goal.", id="goal-panel-title")
 
-                    yield Static("", id="settings-message")
+                                yield Input(
+                                    placeholder="Weekly goal in minutes, e.g. 300",
+                                    id="weekly-goal-input",
+                                )
 
-                    yield Static("Add a subject.", id="subject-settings-title")
+                                with Horizontal(id="settings-button-row"):
+                                    yield Button("Save Goal", id="save-goal-button")
 
-                    yield Input(
-                        placeholder="Subject name, e.g. maths",
-                        id="new-subject-input",
-                    )
+                                yield Static("", id="settings-message")
 
-                    with Horizontal(id="subject-button-row"):
-                        yield Button("Add Subject", id="add-subject-button")
+                            with Vertical(id="subjects-panel"):
+                                yield Static("Add a subject.", id="subject-panel-title")
 
-                    yield Static("", id="subject-message")
+                                yield Input(
+                                    placeholder="Subject name, e.g. maths",
+                                    id="new-subject-input",
+                                )
+
+                                with Horizontal(id="subject-button-row"):
+                                    yield Button("Add Subject", id="add-subject-button")
+
+                                yield Static("", id="subject-message")
 
             yield Static("", id="global-message")
 
@@ -330,6 +340,9 @@ class StudyStreakApp(App):
 
     def on_mount(self):
         self.update_dashboard()
+
+        subject_panel = self.query_one("#subjects-panel")
+        subject_panel.display = False
 
     def update_dashboard(self):
         data = load_data()
@@ -395,6 +408,22 @@ class StudyStreakApp(App):
             self.set_timer(4, lambda: global_message.update(""))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        
+        if event.button.id == "settings-weekly-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+
+            weekly_goal_panel.display = True
+            subjects_panel.display = False
+            return
+        
+        if event.button.id == "settings-subjects-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+
+            weekly_goal_panel.display = False
+            subjects_panel.display = True
+            return
 
         if event.button.id == "clear-button":
             subject_select = self.query_one("#subject-select", Select)
