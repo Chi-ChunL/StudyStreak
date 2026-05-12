@@ -186,6 +186,38 @@ def get_subject_options(data):
     return options
 
 
+def get_subject_stats(data):
+    sessions = data["sessions"]
+
+    if len(sessions) == 0:
+        return "No study session logged yet"
+
+    subject_total = {}
+
+    for session in sessions:
+        subject = session["subject"]
+        minutes = session["minutes"]
+
+        if subject not in subject_total:
+            subject_total[subject] = 0
+
+        subject_total[subject] += minutes
+
+    lines = ["[bold]Subject Stats[/bold]"]
+
+    for subject, total_minutes in sorted(subject_total.items()):
+        hours = total_minutes //60
+        remaining_minutes = total_minutes % 60
+
+        if hours > 0:
+            time_text = f"{hours}h {remaining_minutes}m"
+        else:
+            time_text = f"{remaining_minutes}m"
+
+        lines.append(f"{subject} - {time_text}")
+    
+    return "\n".join(lines)
+
 class StreakEffectScreen(ModalScreen):
     def __init__(self, streak_count):
         super().__init__()
@@ -231,6 +263,10 @@ class StudyStreakApp(App):
                 with TabPane("Dashboard", id="dashboard-tab"):
                     yield Static("", id="dashboard")
                     yield Static("", id="recent-sessions")
+
+                with TabPane("Subject Stats", id="subject-stats-tab"):
+                    yield Static("", id="subject-stats")
+                    
 
                 with TabPane("Log Session", id="log-tab"):
                     yield Static("Log your study session below.", id="log-title")
@@ -308,6 +344,7 @@ class StudyStreakApp(App):
 
         dashboard = self.query_one("#dashboard", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
+        subject_stats = self.query_one("#subject-stats", Static)
         session_select = self.query_one("#session-select", Select)
         subject_select = self.query_one("#subject-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
@@ -324,6 +361,7 @@ class StudyStreakApp(App):
         )
 
         recent_sessions.update(get_recent_sessions(data))
+        subject_stats.update(get_subject_stats(data))
 
         session_select.set_options(get_session_options(data))
         session_select.clear()

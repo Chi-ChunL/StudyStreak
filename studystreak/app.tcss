@@ -230,3 +230,10 @@ TabPane {
     text-align: center;
     color: green;
 }
+
+#subject-stats {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
