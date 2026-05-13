@@ -316,3 +316,90 @@ TabPane {
     padding: 1;
     margin-bottom: 1;
 }
+
+#delete-subject-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-top: 2;
+    margin-bottom: 1;
+}
+
+#delete-subject-select {
+    margin-bottom: 1;
+}
+
+#delete-subject-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#delete-subject-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#delete-subject-button:hover {
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
+}
+
+#delete-subject-message {
+    margin-top: 1;
+    text-align: center;
+    color: yellow;
+}
+
+#delete-subject-confirm-box {
+    width: 60;
+    height: auto;
+    border: round #8a4a4a;
+    background: #111111;
+    padding: 1 2;
+    align: center middle;
+}
+
+#delete-subject-confirm-title {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#delete-subject-confirm-message {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#delete-subject-confirm-buttons {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#cancel-delete-subject-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+    margin: 0 1;
+}
+
+#cancel-delete-subject-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#confirm-delete-subject-button {
+    background: #3a1f1f;
+    color: #e0c0c0;
+    border: tall #8a4a4a;
+    margin: 0 1;
+}
+
+#confirm-delete-subject-button:hover {
+    background: #4a2929;
+    color: white;
+    border: tall #c06a6a;
+}

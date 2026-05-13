@@ -242,6 +242,38 @@ class StreakEffectScreen(ModalScreen):
         self.app.pop_screen()
 
 
+class DeleteSubjectConfirmScreen(ModalScreen):
+    def __init__(self, subject):
+        super().__init__()
+        self.subject = subject
+
+    def compose(self) -> ComposeResult:
+        with Container(id="delete-subject-confirm-box"):
+            yield Static(
+                f"[bold red]Delete subject: {self.subject}?[/bold red]",
+                id="delete-subject-confirm-title"
+            )
+
+            yield Static(
+                "This will also delete all study sessions saved under this subject.",
+                id="delete-subject-confirm-message",
+            )
+
+            with Horizontal(id="delete-subject-confirm-buttons"):
+                yield Button("Cancel", id="cancel-delete-subject-button")
+                yield Button("Delete", id="confirm-delete-subject-button")
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel-delete-subject-button":
+            self.app.pop_screen()
+            return
+        
+        if event.button.id == "confirm-delete-subject-button":
+            self.app.delete_subject_and_sessions(self.subject)
+            self.app.pop_screen()
+            return
+        
+
 class StudyStreakApp(App):
 
     CSS_PATH = "app.tcss"
@@ -334,7 +366,19 @@ class StudyStreakApp(App):
 
                                 yield Static("", id="subject-message")
 
-            yield Static("", id="global-message")
+                                yield Static("Delete a subject.", id="delete-subject-title")
+
+                                yield Select(
+                                    options=[],
+                                    id="delete-subject-select",
+                                    prompt="Choose a subject"
+                                )
+
+                                with Horizontal(id="delete-subject-button-row"):
+                                    yield Button("Delete Subject", id="delete-subject-button")
+                                
+                                yield Static("", id="delete-subject-message")
+            yield Static("", id="global-message")           
 
         yield Footer()
 
@@ -361,6 +405,7 @@ class StudyStreakApp(App):
         session_select = self.query_one("#session-select", Select)
         subject_select = self.query_one("#subject-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
+        delete_subject_select = self.query_one("#delete-subject-select", Select)
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
 
@@ -381,6 +426,9 @@ class StudyStreakApp(App):
 
         subject_select.set_options(get_subject_options(data))
         subject_select.clear()
+
+        delete_subject_select.set_options(get_subject_options(data))
+        delete_subject_select.clear()
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -406,6 +454,36 @@ class StudyStreakApp(App):
             global_message = self.query_one("#global-message", Static)
             global_message.update("[green]Your study session has been logged.[/green]")
             self.set_timer(4, lambda: global_message.update(""))
+
+    def delete_subject_and_sessions(self, subject):
+        data = load_data()
+
+        if subject not in data["subjects"]:
+            delete_subject_message = self.query_one("#delete-subject-message", Static)
+            delete_subject_message.update("[red]That subject could not be found[/red]")
+            self.update_dashboard()
+            return
+        
+        original_session_count = len(data["sessions"])
+
+        data["subjects"].remove(subject)
+
+        data["sessions"] = [
+            session for session in data["sessions"]
+            if session["subject"] != subject
+        ]
+
+        deleted_session_count = original_session_count - len(data["sessions"])#
+
+        save_data(data)
+        self.update_dashboard()
+
+        delete_subject_message = self.query_one("#delete-subject-message", Static)
+
+        delete_subject_message.update(
+            f"[yellow]Deleted subject: {subject}. "
+            f"Removed {deleted_session_count} linked session(s).[/yellow]"
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         
@@ -582,4 +660,17 @@ class StudyStreakApp(App):
 
             subject_select.clear()
             minutes_input.value = ""
+            return
+        
+        if event.button.id == "delete-subject-button":
+            delete_subject_select = self.query_one("#delete-subject-select", Select)
+            delete_subject_message = self.query_one("#delete-subject-message", Static)
+
+            selected_subject = delete_subject_select.value
+
+            if selected_subject is None or selected_subject is False:
+                delete_subject_message.update("[yellow]Please choose a subject to delete.[/yellow]")
+                return
+            
+            self.push_screen(DeleteSubjectConfirmScreen(str(selected_subject)))
             return
