@@ -1,3 +1,23 @@
+import webbrowser
+from datetime import date, timedelta, datetime
+
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import (
+    Header,
+    Footer,
+    Static,
+    Input,
+    Button,
+    TabbedContent,
+    TabPane,
+    Select,
+)
+
+from studystreak.storage import load_data, save_data
+
+
 plain_fire_art = """
 ⠀⠀⠀⠀⠀⠀⢱⣆⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠈⣿⣷⡀⠀⠀⠀⠀
@@ -28,24 +48,6 @@ coloured_fire_art = """
 [red]⠀⠀⠀⠀⠀⠀⠉⠀⠀⠀⠀⠀⠀⠀[/red]
 """
 
-
-from datetime import date, timedelta, datetime
-
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.screen import ModalScreen
-from textual.widgets import (
-    Header,
-    Footer,
-    Static,
-    Input,
-    Button,
-    TabbedContent,
-    TabPane,
-    Select,
-)
-
-from studystreak.storage import load_data, save_data
 
 
 def calculate_current_streak(data):
@@ -190,7 +192,7 @@ def get_subject_stats(data):
     sessions = data["sessions"]
 
     if len(sessions) == 0:
-        return "No study session logged yet"
+        return "No study sessions logged yet."
 
     subject_total = {}
 
@@ -206,7 +208,7 @@ def get_subject_stats(data):
     lines = ["[bold]Subject Stats[/bold]"]
 
     for subject, total_minutes in sorted(subject_total.items()):
-        hours = total_minutes //60
+        hours = total_minutes // 60
         remaining_minutes = total_minutes % 60
 
         if hours > 0:
@@ -215,8 +217,9 @@ def get_subject_stats(data):
             time_text = f"{remaining_minutes}m"
 
         lines.append(f"{subject} - {time_text}")
-    
+
     return "\n".join(lines)
+
 
 class StreakEffectScreen(ModalScreen):
     def __init__(self, streak_count):
@@ -251,7 +254,7 @@ class DeleteSubjectConfirmScreen(ModalScreen):
         with Container(id="delete-subject-confirm-box"):
             yield Static(
                 f"[bold red]Delete subject: {self.subject}?[/bold red]",
-                id="delete-subject-confirm-title"
+                id="delete-subject-confirm-title",
             )
 
             yield Static(
@@ -262,17 +265,17 @@ class DeleteSubjectConfirmScreen(ModalScreen):
             with Horizontal(id="delete-subject-confirm-buttons"):
                 yield Button("Cancel", id="cancel-delete-subject-button")
                 yield Button("Delete", id="confirm-delete-subject-button")
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel-delete-subject-button":
             self.app.pop_screen()
             return
-        
+
         if event.button.id == "confirm-delete-subject-button":
             self.app.delete_subject_and_sessions(self.subject)
             self.app.pop_screen()
             return
-        
+
 
 class StudyStreakApp(App):
 
@@ -283,6 +286,10 @@ class StudyStreakApp(App):
     ]
 
     last_escape_time = None
+    focus_timer = None
+    focus_seconds_left = 0
+    focus_subject = None
+    focus_minutes = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -298,7 +305,6 @@ class StudyStreakApp(App):
 
                 with TabPane("Subject Stats", id="subject-stats-tab"):
                     yield Static("", id="subject-stats")
-                    
 
                 with TabPane("Log Session", id="log-tab"):
                     yield Static("Log your study session below.", id="log-title")
@@ -330,6 +336,33 @@ class StudyStreakApp(App):
                         yield Button("Delete Selected", id="delete-selected-button")
 
                     yield Static("", id="manage-message")
+
+                with TabPane("Focus Mode", id="focus-tab"):
+                    yield Static("Start a focused study session.", id="focus-title")
+
+                    yield Select(
+                        options=[],
+                        id="focus-subject-select",
+                        prompt="Choose a subject",
+                    )
+
+                    yield Input(
+                        placeholder="Study website, e.g. https://senecalearning.com",
+                        id="focus-website-input",
+                    )
+
+                    yield Input(
+                        placeholder="Focus duration in minutes, e.g. 25",
+                        id="focus-minutes-input",
+                    )
+
+                    with Horizontal(id="focus-button-row"):
+                        yield Button("Open Website", id="open-website-button")
+                        yield Button("Start Focus", id="start-focus-button")
+                        yield Button("Cancel Focus", id="cancel-focus-button")
+
+                    yield Static("", id="focus-timer")
+                    yield Static("", id="focus-message")
 
                 with TabPane("Settings", id="settings-tab"):
                     yield Static("Settings", id="settings-title")
@@ -371,14 +404,15 @@ class StudyStreakApp(App):
                                 yield Select(
                                     options=[],
                                     id="delete-subject-select",
-                                    prompt="Choose a subject"
+                                    prompt="Choose a subject",
                                 )
 
                                 with Horizontal(id="delete-subject-button-row"):
                                     yield Button("Delete Subject", id="delete-subject-button")
-                                
+
                                 yield Static("", id="delete-subject-message")
-            yield Static("", id="global-message")           
+
+            yield Static("", id="global-message")
 
         yield Footer()
 
@@ -404,6 +438,7 @@ class StudyStreakApp(App):
         subject_stats = self.query_one("#subject-stats", Static)
         session_select = self.query_one("#session-select", Select)
         subject_select = self.query_one("#subject-select", Select)
+        focus_subject_select = self.query_one("#focus-subject-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
         delete_subject_select = self.query_one("#delete-subject-select", Select)
 
@@ -426,6 +461,9 @@ class StudyStreakApp(App):
 
         subject_select.set_options(get_subject_options(data))
         subject_select.clear()
+
+        focus_subject_select.set_options(get_subject_options(data))
+        focus_subject_select.clear()
 
         delete_subject_select.set_options(get_subject_options(data))
         delete_subject_select.clear()
@@ -460,10 +498,10 @@ class StudyStreakApp(App):
 
         if subject not in data["subjects"]:
             delete_subject_message = self.query_one("#delete-subject-message", Static)
-            delete_subject_message.update("[red]That subject could not be found[/red]")
+            delete_subject_message.update("[red]That subject could not be found.[/red]")
             self.update_dashboard()
             return
-        
+
         original_session_count = len(data["sessions"])
 
         data["subjects"].remove(subject)
@@ -473,7 +511,7 @@ class StudyStreakApp(App):
             if session["subject"] != subject
         ]
 
-        deleted_session_count = original_session_count - len(data["sessions"])#
+        deleted_session_count = original_session_count - len(data["sessions"])
 
         save_data(data)
         self.update_dashboard()
@@ -485,8 +523,104 @@ class StudyStreakApp(App):
             f"Removed {deleted_session_count} linked session(s).[/yellow]"
         )
 
+    def start_focus_session(self, subject, minutes):
+        focus_timer = self.query_one("#focus-timer", Static)
+        focus_message = self.query_one("#focus-message", Static)
+
+        self.focus_subject = subject
+        self.focus_minutes = minutes
+        self.focus_seconds_left = minutes * 60
+
+        if self.focus_timer is not None:
+            self.focus_timer.stop()
+
+        focus_message.update(
+            "[yellow]Focus session started. Stay focused until the timer ends.[/yellow]"
+        )
+
+        self.update_focus_display()
+
+        self.focus_timer = self.set_interval(1, self.tick_focus_timer)
+
+    def update_focus_display(self):
+        focus_timer = self.query_one("#focus-timer", Static)
+
+        minutes_left = self.focus_seconds_left // 60
+        seconds_left = self.focus_seconds_left % 60
+
+        focus_timer.update(
+            f"[bold orange1]Focus timer:[/bold orange1] "
+            f"{minutes_left:02d}:{seconds_left:02d}"
+        )
+
+    def tick_focus_timer(self):
+        self.focus_seconds_left -= 1
+
+        if self.focus_seconds_left <= 0:
+            self.focus_seconds_left = 0
+            self.update_focus_display()
+            self.complete_focus_session()
+            return
+
+        self.update_focus_display()
+
+    def complete_focus_session(self):
+        focus_timer = self.query_one("#focus-timer", Static)
+        focus_message = self.query_one("#focus-message", Static)
+
+        if self.focus_timer is not None:
+            self.focus_timer.stop()
+            self.focus_timer = None
+
+        data = load_data()
+        already_studied_today = has_studied_today(data)
+
+        session = {
+            "subject": str(self.focus_subject).lower(),
+            "minutes": self.focus_minutes,
+            "date": str(date.today()),
+        }
+
+        data["sessions"].append(session)
+        save_data(data)
+
+        self.update_dashboard()
+
+        updated_data = load_data()
+        streak_count = calculate_current_streak(updated_data)
+
+        completed_subject = self.focus_subject
+        completed_minutes = self.focus_minutes
+
+        self.focus_seconds_left = 0
+        self.focus_subject = None
+        self.focus_minutes = 0
+
+        focus_timer.update("[bold green]Focus finished.[/bold green]")
+        focus_message.update(
+            f"[green]Completed focus session. Logged {completed_minutes} minutes of {completed_subject} study.[/green]"
+        )
+
+        if not already_studied_today:
+            self.show_streak_effect(streak_count)
+
+    def cancel_focus_session(self):
+        focus_timer = self.query_one("#focus-timer", Static)
+        focus_message = self.query_one("#focus-message", Static)
+
+        if self.focus_timer is not None:
+            self.focus_timer.stop()
+            self.focus_timer = None
+
+        self.focus_seconds_left = 0
+        self.focus_subject = None
+        self.focus_minutes = 0
+
+        focus_timer.update("")
+        focus_message.update("[yellow]Focus session cancelled. No study time was logged.[/yellow]")
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        
+
         if event.button.id == "settings-weekly-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
@@ -494,7 +628,7 @@ class StudyStreakApp(App):
             weekly_goal_panel.display = True
             subjects_panel.display = False
             return
-        
+
         if event.button.id == "settings-subjects-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
@@ -610,6 +744,70 @@ class StudyStreakApp(App):
             new_subject_input.value = ""
             return
 
+        if event.button.id == "delete-subject-button":
+            delete_subject_select = self.query_one("#delete-subject-select", Select)
+            delete_subject_message = self.query_one("#delete-subject-message", Static)
+
+            selected_subject = delete_subject_select.value
+
+            if selected_subject is None or selected_subject is False:
+                delete_subject_message.update("[yellow]Please choose a subject to delete.[/yellow]")
+                return
+
+            self.push_screen(DeleteSubjectConfirmScreen(str(selected_subject)))
+            return
+
+        if event.button.id == "open-website-button":
+            website_input = self.query_one("#focus-website-input", Input)
+            focus_message = self.query_one("#focus-message", Static)
+
+            website = website_input.value.strip()
+
+            if website == "":
+                focus_message.update("[red]Please enter a study website.[/red]")
+                return
+
+            if not website.startswith("http://") and not website.startswith("https://"):
+                website = "https://" + website
+
+            webbrowser.open(website)
+
+            focus_message.update(f"[green]Opened study website: {website}[/green]")
+            return
+
+        if event.button.id == "start-focus-button":
+            focus_subject_select = self.query_one("#focus-subject-select", Select)
+            focus_minutes_input = self.query_one("#focus-minutes-input", Input)
+            focus_message = self.query_one("#focus-message", Static)
+
+            subject = focus_subject_select.value
+            minutes_text = focus_minutes_input.value.strip()
+
+            if subject is None or subject is False:
+                focus_message.update("[red]Please choose a subject.[/red]")
+                return
+
+            if minutes_text == "":
+                focus_message.update("[red]Please enter a focus duration.[/red]")
+                return
+
+            if not minutes_text.isdigit():
+                focus_message.update("[red]Focus duration must be a whole number.[/red]")
+                return
+
+            minutes = int(minutes_text)
+
+            if minutes <= 0:
+                focus_message.update("[red]Focus duration must be more than 0.[/red]")
+                return
+
+            self.start_focus_session(str(subject), minutes)
+            return
+
+        if event.button.id == "cancel-focus-button":
+            self.cancel_focus_session()
+            return
+
         if event.button.id == "log-button":
             subject_select = self.query_one("#subject-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)
@@ -660,17 +858,4 @@ class StudyStreakApp(App):
 
             subject_select.clear()
             minutes_input.value = ""
-            return
-        
-        if event.button.id == "delete-subject-button":
-            delete_subject_select = self.query_one("#delete-subject-select", Select)
-            delete_subject_message = self.query_one("#delete-subject-message", Static)
-
-            selected_subject = delete_subject_select.value
-
-            if selected_subject is None or selected_subject is False:
-                delete_subject_message.update("[yellow]Please choose a subject to delete.[/yellow]")
-                return
-            
-            self.push_screen(DeleteSubjectConfirmScreen(str(selected_subject)))
             return
