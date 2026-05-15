@@ -9,7 +9,8 @@ def get_default_data():
     return {
         "sessions": [],
         "weekly_goal": 300,
-        "subjects": []
+        "subjects": [],
+        "subject_websites": {}
     }
 
 
@@ -28,6 +29,9 @@ def load_data():
 
     if "subjects" not in data:
         data["subjects"] = []
+    
+    if "subject_websites" not in data:
+        data["subject_websites"] = {}
 
     return data
 

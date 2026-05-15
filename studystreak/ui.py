@@ -220,6 +220,12 @@ def get_subject_stats(data):
 
     return "\n".join(lines)
 
+def is_blank_select_value(value):
+    return(
+        value is None
+        or value is False
+        or str(value).lower() in ["", "none", "null", "select.null", "select.blank"]
+    )
 
 class StreakEffectScreen(ModalScreen):
     def __init__(self, streak_count):
@@ -394,6 +400,11 @@ class StudyStreakApp(App):
                                     id="new-subject-input",
                                 )
 
+                                yield Input(
+                                    placeholder="Study website for this subject, e.g. https://senecalearning.com",
+                                    id="new-subject-website-input",
+                                )
+
                                 with Horizontal(id="subject-button-row"):
                                     yield Button("Add Subject", id="add-subject-button")
 
@@ -505,6 +516,9 @@ class StudyStreakApp(App):
         original_session_count = len(data["sessions"])
 
         data["subjects"].remove(subject)
+        
+        if subject in data["subject_websites"]:
+            del data["subject_websites"][subject]
 
         data["sessions"] = [
             session for session in data["sessions"]
@@ -719,13 +733,19 @@ class StudyStreakApp(App):
 
         if event.button.id == "add-subject-button":
             new_subject_input = self.query_one("#new-subject-input", Input)
+            new_subject_website_input = self.query_one("#new-subject-website-input", Input)
             subject_message = self.query_one("#subject-message", Static)
-
+            
             new_subject = new_subject_input.value.strip().lower()
+            website = new_subject_website_input.value.strip()
 
             if new_subject == "":
                 subject_message.update("[red]Please enter a subject name.[/red]")
                 return
+
+            if website != "":
+                if not website.startswith("https://") and not website.startswith("https://"):
+                    website = "https://" + website
 
             data = load_data()
 
@@ -736,12 +756,22 @@ class StudyStreakApp(App):
             data["subjects"].append(new_subject)
             data["subjects"].sort()
 
+            data["subject_websites"][new_subject] = website
+
             save_data(data)
 
             self.update_dashboard()
 
-            subject_message.update(f"[green]Added subject: {new_subject}[/green]")
+            if website == "":
+                subject_message.update(f"[green]Added subject: {new_subject}[/green]")
+            else:
+                subject_message.update(
+                    f"[green]Added subject: {new_subject} with website: {website}[/green]"
+                )
+
+            
             new_subject_input.value = ""
+            new_subject_website_input.value = ""
             return
 
         if event.button.id == "delete-subject-button":
@@ -758,13 +788,23 @@ class StudyStreakApp(App):
             return
 
         if event.button.id == "open-website-button":
+            focus_subject_select = self.query_one("#focus-subject-select", Select)
             website_input = self.query_one("#focus-website-input", Input)
             focus_message = self.query_one("#focus-message", Static)
 
+            subject = focus_subject_select.value
             website = website_input.value.strip()
+            data = load_data()
+
+            if is_blank_select_value(subject):
+                focus_message.update("[red]Please choose a subject first.[/red]")
+                return  
+            
+            if website == "":
+                website = data["subject_websites"].get(str(subject), "")
 
             if website == "":
-                focus_message.update("[red]Please enter a study website.[/red]")
+                focus_message.update("[red]No website saved for this subject. Please enter one manually.[/red]")
                 return
 
             if not website.startswith("http://") and not website.startswith("https://"):
@@ -783,7 +823,7 @@ class StudyStreakApp(App):
             subject = focus_subject_select.value
             minutes_text = focus_minutes_input.value.strip()
 
-            if subject is None or subject is False:
+            if is_blank_select_value :
                 focus_message.update("[red]Please choose a subject.[/red]")
                 return
 
@@ -816,7 +856,7 @@ class StudyStreakApp(App):
             subject = subject_select.value
             minutes_text = minutes_input.value.strip()
 
-            if subject is None or subject is False:
+            if is_blank_select_value:
                 message.update("[red]Please choose a subject.[/red]")
                 return
 

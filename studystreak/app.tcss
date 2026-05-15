@@ -463,3 +463,14 @@ TabPane {
     text-align: center;
     color: green;
 }
+
+#weekly-goal-input,
+#new-subject-input {
+    margin-bottom: 1;
+}
+
+#weekly-goal-input,
+#new-subject-input,
+#new-subject-website-input {
+    margin-bottom: 1;
+}
