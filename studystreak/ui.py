@@ -633,6 +633,22 @@ class StudyStreakApp(App):
         focus_timer.update("")
         focus_message.update("[yellow]Focus session cancelled. No study time was logged.[/yellow]")
 
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "focus-subject-select":
+            return
+        
+        selected_subject = event.value
+        website_input = self.query_one("#focus-website-input", Input)
+
+        if is_blank_select_value(selected_subject):
+            website_input.value = ""
+            return
+        
+        data = load_data()
+        saved_website = data["subject_websites"].get(str(selected_subject), "")
+
+        website_input.value = saved_website
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "settings-weekly-button":
