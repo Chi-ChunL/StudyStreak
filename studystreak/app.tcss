@@ -474,3 +474,39 @@ TabPane {
 #new-subject-website-input {
     margin-bottom: 1;
 }
+
+#edit-website-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-top: 2;
+    margin-bottom: 1;
+}
+
+#edit-website-subject-select,
+#edit-website-input {
+    margin-bottom: 1;
+}
+
+#edit-website-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#update-website-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#update-website-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#edit-website-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}

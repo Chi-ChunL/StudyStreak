@@ -49,6 +49,16 @@ coloured_fire_art = """
 """
 
 
+def format_website_url(website):
+    website = website.strip()
+
+    if website == "":
+        return ""
+
+    if not website.startswith("http://") and not website.startswith("https://"):
+        website = "https://" + website
+
+    return website
 
 def calculate_current_streak(data):
     study_dates = set()
@@ -409,6 +419,24 @@ class StudyStreakApp(App):
                                     yield Button("Add Subject", id="add-subject-button")
 
                                 yield Static("", id="subject-message")
+                                
+                                yield Static("Edit subject website.", id="edit-website-title")
+
+                                yield Select(
+                                    options=[],
+                                    id="edit-website-subject-select",
+                                    prompt="Choose a subject",
+                                )
+
+                                yield Input(
+                                    placeholder="New website, e.g. https://senecalearning.com",
+                                    id="edit-website-input",
+                                )
+
+                                with Horizontal(id="edit-website-button-row"):
+                                    yield Button("Update Website", id="update-website-button")
+                                
+                                yield Static("", id="edit-website-message")
 
                                 yield Static("Delete a subject.", id="delete-subject-title")
 
@@ -452,6 +480,7 @@ class StudyStreakApp(App):
         focus_subject_select = self.query_one("#focus-subject-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
         delete_subject_select = self.query_one("#delete-subject-select", Select)
+        edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
 
@@ -478,6 +507,9 @@ class StudyStreakApp(App):
 
         delete_subject_select.set_options(get_subject_options(data))
         delete_subject_select.clear()
+
+        edit_website_subject_select.set_options(get_subject_options(data))
+        edit_website_subject_select.clear()
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -634,20 +666,30 @@ class StudyStreakApp(App):
         focus_message.update("[yellow]Focus session cancelled. No study time was logged.[/yellow]")
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id != "focus-subject-select":
-            return
-        
-        selected_subject = event.value
-        website_input = self.query_one("#focus-website-input", Input)
-
-        if is_blank_select_value(selected_subject):
-            website_input.value = ""
-            return
-        
         data = load_data()
-        saved_website = data["subject_websites"].get(str(selected_subject), "")
+        if event.select.id != "focus-subject-select":
+            selected_subject = event.value
+            website_input = self.query_one("#focus-website-input", Input)
 
-        website_input.value = saved_website
+            if is_blank_select_value(selected_subject):
+                website_input.value = ""
+                return
+            
+        
+            saved_website = data["subject_websites"].get(str(selected_subject), "")
+            website_input.value = saved_website
+            return
+        
+        if event.select.id == "edit-website-subject-select":
+            selected_subject = event.value
+            edit_website_input = self.query_one("#edit-website-input", Input)
+
+            if is_blank_select_value(selected_subject):
+                edit_website_input.value = ""
+                return
+            
+            saved_website = data["subject_websites"].get(str(selected_subject), "")
+            edit_website_input.value = saved_website
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
@@ -759,9 +801,7 @@ class StudyStreakApp(App):
                 subject_message.update("[red]Please enter a subject name.[/red]")
                 return
 
-            if website != "":
-                if not website.startswith("https://") and not website.startswith("https://"):
-                    website = "https://" + website
+            website = format_website_url()
 
             data = load_data()
 
@@ -789,6 +829,44 @@ class StudyStreakApp(App):
             new_subject_input.value = ""
             new_subject_website_input.value = ""
             return
+
+        if event.button.id == "update-website-button":
+            edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
+            edit_website_input  = self.query_one("#edit-website-input", Input)
+            edit_website_message = self.query_one("#edit-website-message", Static)
+
+            selected_subject = edit_website_subject_select.value
+            website = edit_website_input.value.strip()
+
+            if is_blank_select_value(selected_subject):
+                edit_website_message.update("[yellow]Please choose a subject first.[/yellow]")
+                return
+            
+            data = load_data()
+
+            if str(selected_subject) not in data["subjects"]:
+                edit_website_message.update("[red]That subject could not be found.[/red]")
+                self.update_dashboard()
+                return
+            
+            website = format_website_url(website)
+
+            data["subject_websites"][str(selected_subject)] = website
+            save_data(data)
+
+            self.update_dashboard()
+
+            if website == "":
+                edit_website_message.update(
+                    f"[yellow]Cleared website for {selected_subject}.[/yellow]"
+                )
+            else:
+                edit_website_message.update(
+                    f"[green]Updated website for {selected_subject}: {website}[/green]"
+                )
+
+            return
+
 
         if event.button.id == "delete-subject-button":
             delete_subject_select = self.query_one("#delete-subject-select", Select)
