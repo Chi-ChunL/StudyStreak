@@ -3,7 +3,7 @@ Screen {
 }
 
 #main-container {
-    width: 80;
+    width: 85;
     height: auto;
     border: round grey;
     padding: 1 2;
@@ -133,24 +133,6 @@ TabPane {
     margin-bottom: 1;
 }
 
-#weekly-goal-input {
-    height: auto;
-    align: center middle;
-    margin-top: 1;
-}
-
-#save-goal-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#save-goal-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
 #settings-layout {
     width: 100%;
     height: auto;
@@ -204,7 +186,8 @@ TabPane {
 }
 
 #weekly-goal-input,
-#new-subject-input {
+#new-subject-input,
+#new-subject-website-input {
     margin-bottom: 1;
 }
 
@@ -457,12 +440,6 @@ TabPane {
     color: green;
 }
 
-#weekly-goal-input,
-#new-subject-input,
-#new-subject-website-input {
-    margin-bottom: 1;
-}
-
 #edit-website-title {
     text-align: center;
     color: #cfcfcf;
@@ -499,15 +476,6 @@ TabPane {
     color: green;
 }
 
-
-#subject-add-tab:hover,
-#subject-edit-tab:hover,
-#subject-delete-tab:hover {
-    color: white;
-    background: #222222;
-    border-bottom: solid #888888;
-}
-
 #subject-add-panel,
 #subject-edit-panel,
 #subject-delete-panel {
@@ -522,20 +490,33 @@ TabPane {
     color: #cfcfcf;
     margin-bottom: 1;
 }
+
 #subject-subnav {
-    width: 32;
-    height: 1;
+    width: 25;
+    height: 2;
+    border-bottom: solid #333333;
     align: center middle;
     margin-bottom: 2;
 }
 
 #subject-add-tab,
-#subject-edit-tab,
+#subject-edit-tab {
+    min-width: 0;
+    width: 7;
+    height: 1;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    content-align: center middle;
+}
+
 #subject-delete-tab {
     min-width: 0;
-    width: 9;
+    width: 8;
     height: 1;
-    margin: 0 1;
+    margin: 0;
     padding: 0;
     background: transparent;
     color: #b8b8b8;
@@ -547,14 +528,14 @@ TabPane {
 #subject-edit-tab:hover,
 #subject-delete-tab:hover {
     color: white;
-    background: transparent;
-    border-bottom: solid #888888;
+    background: #222222;
+    border: none;
 }
 
 #subject-add-tab:focus,
 #subject-edit-tab:focus,
 #subject-delete-tab:focus {
     color: white;
-    background: transparent;
-    border-bottom: solid #888888;
+    background: #222222;
+    border: none;
 }
