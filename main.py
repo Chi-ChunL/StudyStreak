@@ -3,9 +3,17 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.align import Align
 from datetime import date, timedelta
+import pwinput
 
 from studystreak.storage import load_data, save_data
 from studystreak.ui import plain_fire_art, coloured_fire_art, StudyStreakApp
+from studystreak.accounts import (
+    create_account,
+    login_account,
+    logout_account,
+    list_accounts,
+    get_current_user,
+)
 
 
 app = typer.Typer()
@@ -13,6 +21,7 @@ console = Console()
 
 
 def calculate_streak(data):
+    #calculate current study streak
     study_dates = set()
 
     for session in data["sessions"]:
@@ -30,9 +39,7 @@ def calculate_streak(data):
 
 @app.command()
 def log(subject: str, minutes: int):
-    """
-    Log a study session from the command line.
-    """
+    #log a session from command line
     if minutes <= 0:
         console.print("[red]Minutes must be more than 0.[/red]")
         return
@@ -53,9 +60,7 @@ def log(subject: str, minutes: int):
 
 @app.command()
 def today():
-    """
-    Show today's study sessions.
-    """
+    #show today's study sessions
     data = load_data()
     today_date = str(date.today())
 
@@ -80,9 +85,7 @@ def today():
 
 @app.command()
 def streak():
-    """
-    Show the current study streak.
-    """
+    #show current study streak
     data = load_data()
     streak_count = calculate_streak(data)
 
@@ -128,11 +131,75 @@ Great work. Your consistency is building.
 
 @app.command()
 def ui():
-    """
-    Open the StudyStreak Textual interface.
-    """
+    #open StudyStreak in Textual
     study_app = StudyStreakApp()
     study_app.run()
+
+
+@app.command()
+def create_user(username: str, display_name: str = ""):
+    #create a local encrypted StudyStreak account
+    password = pwinput.pwinput(prompt="Password: ", mask="*")
+    confirm_password = pwinput.pwinput(prompt="Confirm Password: ", mask="*")
+
+    if password != confirm_password:
+        console.print("[red]Passwords do not match.[/red]")
+        return
+
+    try:
+        create_account(
+            username=username,
+            password=password,
+            display_name=display_name if display_name else None,
+        )
+    except ValueError as error:
+        console.print(f"[red]{error}[/red]")
+        return
+
+    console.print(f"[green]Created account: {username}[/green]")
+
+
+@app.command()
+def login(username: str):
+    #test login for a local StudyStreak account
+    password = pwinput.pwinput(prompt="Password: ", mask="*")
+
+    try:
+        private_data = login_account(username, password)
+    except ValueError as error:
+        console.print(f"[red]{error}[/red]")
+        return
+
+    console.print(f"[green]Logged in as {username}.[/green]")
+    console.print(
+        f"[cyan]Loaded encrypted data with {len(private_data['sessions'])} saved session(s).[/cyan]"
+    )
+
+
+@app.command()
+def logout():
+    #logout of the current account
+    logout_account()
+    console.print("[yellow]Logged out.[/yellow]")
+
+
+@app.command()
+def users():
+    #show local StudyStreak accounts
+    accounts = list_accounts()
+    current_user = get_current_user()
+
+    if len(accounts) == 0:
+        console.print("[yellow]No accounts created yet.[/yellow]")
+        return
+
+    console.print("[bold cyan]Local accounts[/bold cyan]")
+
+    for username in accounts:
+        if username == current_user:
+            console.print(f"- {username} [green](current)[/green]")
+        else:
+            console.print(f"- {username}")
 
 
 if __name__ == "__main__":

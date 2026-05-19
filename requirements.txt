@@ -1,3 +1,6 @@
 typer
 rich
 textual
+argon2-cffi
+cryptography
+pwinput

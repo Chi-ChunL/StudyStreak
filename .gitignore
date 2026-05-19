@@ -11,6 +11,7 @@ ENV/
 
 # Local study data
 study_data.json
+accounts.json
 
 # Environment variables
 .env
