@@ -14,6 +14,7 @@ from studystreak.accounts import (
     list_accounts,
     get_current_user,
 )
+from studystreak.session import set_session, clear_session
 
 
 app = typer.Typer()
@@ -166,6 +167,7 @@ def login(username: str):
 
     try:
         private_data = login_account(username, password)
+        set_session(username, password, private_data)
     except ValueError as error:
         console.print(f"[red]{error}[/red]")
         return
@@ -180,6 +182,7 @@ def login(username: str):
 def logout():
     #logout of the current account
     logout_account()
+    clear_session()
     console.print("[yellow]Logged out.[/yellow]")
 
 

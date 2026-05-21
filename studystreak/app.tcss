@@ -539,3 +539,54 @@ TabPane {
     background: #222222;
     border: none;
 }
+
+#login-container {
+    width: 60;
+    height: auto;
+    border: round grey;
+    padding: 1 2;
+}
+
+#login-title {
+    text-align: center;
+    text-style: bold;
+    color: grey;
+    margin-bottom: 1;
+}
+
+#login-subtitle {
+    text-align: center;
+    color: white;
+    margin-bottom: 1;
+}
+
+#login-username-input,
+#login-password-input {
+    margin-bottom: 1;
+}
+
+#login-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#login-button,
+#create-account-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#login-button:hover,
+#create-account-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#login-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}

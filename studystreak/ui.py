@@ -1,4 +1,5 @@
 import webbrowser
+import pwinput
 from datetime import date, timedelta, datetime
  
 from textual.app import App, ComposeResult
@@ -16,7 +17,8 @@ from textual.widgets import (
 )
  
 from studystreak.storage import load_data, save_data
- 
+from studystreak.accounts import create_account, login_account
+from studystreak.session import set_session, clear_session, is_logged_in
  
 plain_fire_art = """
 ⠀⠀⠀⠀⠀⠀⢱⣆⠀⠀⠀⠀⠀⠀
@@ -306,10 +308,24 @@ class StudyStreakApp(App):
     focus_seconds_left = 0
     focus_subject = None
     focus_minutes = 0
+    logged_in = False
  
     def compose(self) -> ComposeResult:
         yield Header()
- 
+        
+        with Container(id="login-container"):
+            yield Static("StudyStreak Login", id="login-title")
+            yield Static("Log in or create an account.", id="login-subtitle")
+
+            yield Input(placeholder="Username", id="login-username-input")
+            yield Input(placeholder="Password", id="login-password-input", password=True)
+
+            with Horizontal(id="login-button-row"):
+                yield Button("Login", id="login-button")
+                yield Button("Create Account", id="create-account-button")
+            
+            yield Static("", id="login-message")
+
         with Container(id="main-container"):
             yield Static("StudyStreak CLI", id="title")
             yield Static("Track your study streak and log your progress.", id="subtitle")
@@ -469,21 +485,22 @@ class StudyStreakApp(App):
         yield Footer()
  
     def on_mount(self):
-        self.update_dashboard()
- 
-        # Start with weekly goal panel visible, subjects panel hidden
-        weekly_goal_panel = self.query_one("#weekly-goal-panel")
+        #show login first
+        login_container = self.query_one("#login-container")
+        main_container = self.query_one("#main-container")
+
+        login_container.display = True
+        main_container.display = False
+
         subjects_panel = self.query_one("#subjects-panel")
- 
-        weekly_goal_panel.display = True
         subjects_panel.display = False
- 
-        # Within subjects panel, only show add by default
+
         subject_edit_panel = self.query_one("#subject-edit-panel")
         subject_delete_panel = self.query_one("#subject-delete-panel")
- 
+
         subject_edit_panel.display = False
         subject_delete_panel.display = False
+
  
     def update_dashboard(self):
         data = load_data()
@@ -714,9 +731,77 @@ class StudyStreakApp(App):
  
             saved_website = data["subject_websites"].get(str(selected_subject), "")
             edit_website_input.value = saved_website
- 
+    
+    def show_main_app(self):
+        #show main app after login
+        login_container = self.query_one("#login-container")
+        main_container = self.query_one("#main-container")
+
+        login_container.display = False
+        main_container.display = True
+
+        self.logged_in = True
+        self.update_dashboard()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
- 
+        
+
+        if event.button.id == "login-button":
+            username_input = self.query_one("#login-username-input", Input)
+            password_input = self.query_one("#login-password-input", Input)
+            login_message = self.query_one("#login-message", Static)
+
+            username = username_input.value.strip()
+            password = password_input.value
+
+            if username == "":
+                login_message.update("[red]Please enter your username.[/red]")
+                return
+            
+            if password == "":
+                login_message.update("[red]Please enter your password.[/red]")
+            
+            try:
+                private_data = login_account(username, password)
+                set_session(username, password, private_data)
+            except ValueError as error:
+                login_message.update(f"[red]{error}[/red]")
+                return
+            
+            password_input.value = ""
+            login_message.update("[green]Login successful.[/green]")
+            self.show_main_app()
+            return
+
+        if event.button.id == "create-account-button":
+            username_input = self.query_one("#login-username-input", Input)
+            password_input = self.query_one("#login-password-input", Input)
+            login_message = self.query_one("#login-message", Static)
+
+            username = username_input.value.strip()
+            password = password_input.value
+
+            if username == "":
+                login_message.update("[red]Please enter a username.[/red]")
+                return
+
+            if password == "":
+                login_message.update("[red]Please enter a password.[/red]")
+                return
+
+            try:
+                create_account(username=username, password=password)
+                private_data = login_account(username, password)
+                set_session(username, password, private_data)
+            except ValueError as error:
+                login_message.update(f"[red]{error}[/red]")
+                return
+
+            password_input.value = ""
+            login_message.update("[green]Account created and logged in.[/green]")
+            self.show_main_app()
+            return
+
         if event.button.id == "settings-weekly-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
@@ -724,6 +809,7 @@ class StudyStreakApp(App):
             weekly_goal_panel.display = True
             subjects_panel.display = False
             return
+ 
  
         if event.button.id == "settings-subjects-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
