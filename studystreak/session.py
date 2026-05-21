@@ -1,5 +1,7 @@
 from typing import Any 
 
+from studystreak.accounts import save_user_private_data
+
 _current_username: str | None = None
 _current_password: str | None = None
 _current_private_data: dict[str, Any] | None = None
@@ -32,6 +34,13 @@ def is_logged_in() -> bool:
         and _current_private_data is not None
     )
 
+def get_session_username() -> str:
+    #get active username for this run
+    if _current_username is None:
+        raise RuntimeError("No user is currently logged in")
+
+    return _current_username
+
 def get_session_password() -> str:
     #get active password for this run
     if _current_password is None:
@@ -54,3 +63,19 @@ def update_session_data(private_data: dict[str, Any]) -> None:
         raise RuntimeError("No user is currently logged in")
     
     _current_private_data = private_data
+
+
+def save_session_data(private_data: dict[str, Any]) -> None:
+    #save active user data back encrypted
+
+    global _current_private_data
+
+    if not is_logged_in():
+        raise RuntimeError("No user is currently logged in")
+    
+    username = get_session_username()
+    password = get_session_password()
+
+    save_user_private_data(username, password, private_data)
+    _current_private_data = private_data
+    
