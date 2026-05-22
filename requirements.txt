@@ -4,3 +4,4 @@ textual
 argon2-cffi
 cryptography
 pwinput
+keyring

@@ -1,5 +1,4 @@
 import webbrowser
-import pwinput
 from datetime import date, timedelta, datetime
  
 from textual.app import App, ComposeResult
@@ -14,12 +13,21 @@ from textual.widgets import (
     TabbedContent,
     TabPane,
     Select,
+    Checkbox,
 )
  
 from studystreak.storage import load_data, save_data
-from studystreak.accounts import create_account, login_account
-from studystreak.session import set_session, clear_session, is_logged_in
- 
+from studystreak.accounts import create_account, login_account, logout_account
+from studystreak.session import set_session, clear_session, get_session_username
+from studystreak.auth_cache import (
+    save_remembered_login,
+    get_remembered_password,
+    get_remembered_username,
+    clear_remembered_login,
+)
+
+
+
 plain_fire_art = """
 ⠀⠀⠀⠀⠀⠀⢱⣆⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠈⣿⣷⡀⠀⠀⠀⠀
@@ -319,6 +327,7 @@ class StudyStreakApp(App):
 
             yield Input(placeholder="Username", id="login-username-input")
             yield Input(placeholder="Password", id="login-password-input", password=True)
+            yield Checkbox("Remember me", id="remember-me-checkbox")
 
             with Horizontal(id="login-button-row"):
                 yield Button("Login", id="login-button")
@@ -329,7 +338,12 @@ class StudyStreakApp(App):
         with Container(id="main-container"):
             yield Static("StudyStreak CLI", id="title")
             yield Static("Track your study streak and log your progress.", id="subtitle")
- 
+
+            with Horizontal(id="account-row"):
+                yield Static("", id="account-label")
+                yield Button("Logout", id="logout-button")
+            
+
             with TabbedContent(initial="dashboard-tab"):
                 with TabPane("Dashboard", id="dashboard-tab"):
                     yield Static("", id="dashboard")
@@ -501,6 +515,7 @@ class StudyStreakApp(App):
         subject_edit_panel.display = False
         subject_delete_panel.display = False
 
+        self.try_remembered_login()
  
     def update_dashboard(self):
         data = load_data()
@@ -732,10 +747,42 @@ class StudyStreakApp(App):
             saved_website = data["subject_websites"].get(str(selected_subject), "")
             edit_website_input.value = saved_website
     
+    def try_remembered_login(self):
+        #try auto login from remembered account
+        username_input = self.query_one("#login-username-input", Input)
+        login_message = self.query_one("#login-message", Static)
+
+        remembered_username = get_remembered_username()
+
+        if remembered_username is None:
+            return
+        
+        username_input.value = remembered_username
+
+        remembered_password = get_remembered_password(remembered_username)
+
+        if remembered_password is None:
+            login_message.update("[yellow]Enter your password to continue[/yellow]")
+            return
+
+        try:
+            private_data = login_account(remembered_username, remembered_password)
+            set_session(remembered_username, remembered_password, private_data)
+        except ValueError:
+            clear_remembered_login()
+            login_message.update("[red]Saved login expired. Please log in again.[/red]")
+            return
+        self.show_main_app()
+
     def show_main_app(self):
         #show main app after login
         login_container = self.query_one("#login-container")
         main_container = self.query_one("#main-container")
+        account_label = self.query_one("#account-label", Static)
+
+        username = get_session_username()
+
+        account_label.update(f"[cyan]Logged in as:[/cyan] {username}")
 
         login_container.display = False
         main_container.display = True
@@ -745,7 +792,28 @@ class StudyStreakApp(App):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         
+        if event.button.id == "logout-button":
+            #logout from Textual UI
+            login_container = self.query_one("#login-container")
+            main_container = self.query_one("#main-container")
+            username_input = self.query_one("#login-username-input", Input)
+            password_input = self.query_one("#login-password-input", Input)
+            login_message = self.query_one("#login-message", Static)
 
+            logout_account()
+            clear_session()
+            clear_remembered_login()
+
+            self.logged_in = False
+
+            username_input.value = ""
+            password_input.value = ""
+
+            main_container.display = False
+            login_container.display = True
+
+            login_message.update("[yellow]Logged out.[/yellow]")
+            return
         if event.button.id == "login-button":
             username_input = self.query_one("#login-username-input", Input)
             password_input = self.query_one("#login-password-input", Input)
@@ -760,10 +828,19 @@ class StudyStreakApp(App):
             
             if password == "":
                 login_message.update("[red]Please enter your password.[/red]")
+                return
             
             try:
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
+
+                remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
+
+                if remember_checkbox.value:
+                    save_remembered_login(username, password)
+                else:
+                    clear_remembered_login()
+
             except ValueError as error:
                 login_message.update(f"[red]{error}[/red]")
                 return
@@ -793,6 +870,13 @@ class StudyStreakApp(App):
                 create_account(username=username, password=password)
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
+
+                remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
+
+                if remember_checkbox.value:
+                    save_remembered_login(username, password)
+                else:
+                    clear_remembered_login()
             except ValueError as error:
                 login_message.update(f"[red]{error}[/red]")
                 return
@@ -1047,8 +1131,7 @@ class StudyStreakApp(App):
                 focus_message.update("[red]No website saved for this subject. Please enter one manually.[/red]")
                 return
  
-            if not website.startswith("http://") and not website.startswith("https://"):
-                website = "https://" + website
+            website = format_website_url(website)
  
             webbrowser.open(website)
  

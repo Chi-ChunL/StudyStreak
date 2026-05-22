@@ -29,6 +29,7 @@ htmlcov/
 # Textual cache / logs
 .textual/
 *.log
+auth_cache.json
 
 # IDE / editor files
 .vscode/
