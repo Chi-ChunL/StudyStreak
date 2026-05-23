@@ -324,6 +324,7 @@ class StudyStreakApp(App):
     focus_subject = None
     focus_minutes = 0
     logged_in = False
+    temp_message_versions = {}
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -527,6 +528,7 @@ class StudyStreakApp(App):
         subject_edit_panel.display = False
         subject_delete_panel.display = False
 
+        self.hide_all_temp_messages()
         self.try_remembered_login()
  
     def update_dashboard(self):
@@ -579,13 +581,52 @@ class StudyStreakApp(App):
         edit_website_subject_select.set_options(get_subject_options(data))
         edit_website_subject_select.clear()
  
+    def show_temp_message(self, widget_id, text, seconds=5):
+        #show message then hide it
+        widget = self.query_one(widget_id, Static)
+
+        version = self.temp_message_versions.get(widget_id, 0) + 1
+        self.temp_message_versions[widget_id] = version
+
+        widget.display = True
+        widget.update(text)
+
+        self.set_timer(seconds, lambda: self.hide_temp_message(widget_id, version))
+
+    def hide_temp_message(self, widget_id, version):
+        #hide temporary message
+        if self.temp_message_versions.get(widget_id) != version:
+            return
+
+        widget = self.query_one(widget_id, Static)
+        widget.update("")
+        widget.display = False
+
+    def hide_all_temp_messages(self):
+        #hide empty message boxes
+        temp_widget_ids = [
+            "#message",
+            "#manage-message",
+            "#settings-message",
+            "#subject-message",
+            "#edit-website-message",
+            "#delete-subject-message",
+            "#focus-message",
+            "#focus-timer",
+            "#global-message",
+            "#login-message",
+        ]
+
+        for widget_id in temp_widget_ids:
+            self.query_one(widget_id, Static).display = False
+
     def action_escape_quit(self):
         current_time = datetime.now()
         global_message = self.query_one("#global-message", Static)
  
         if self.last_escape_time is None:
             self.last_escape_time = current_time
-            global_message.update("[yellow]Press Esc again to quit.[/yellow]")
+            self.show_temp_message("#global-message", "[yellow]Press Esc again to quit.[/yellow]")
             return
  
         time_difference = current_time - self.last_escape_time
@@ -594,22 +635,21 @@ class StudyStreakApp(App):
             self.exit()
         else:
             self.last_escape_time = current_time
-            global_message.update("[yellow]Press Esc again to quit.[/yellow]")
+            self.show_temp_message("#global-message", "[yellow]Press Esc again to quit.[/yellow]")
  
     def show_streak_effect(self, streak_count):
         if streak_count > 0:
             self.push_screen(StreakEffectScreen(streak_count))
         else:
             global_message = self.query_one("#global-message", Static)
-            global_message.update("[green]Your study session has been logged.[/green]")
-            self.set_timer(4, lambda: global_message.update(""))
+            self.show_temp_message("#global-message", "[green]Your study session has been logged.[/green]")
  
     def delete_subject_and_sessions(self, subject):
         data = load_data()
  
         if subject not in data["subjects"]:
             delete_subject_message = self.query_one("#delete-subject-message", Static)
-            delete_subject_message.update("[red]That subject could not be found.[/red]")
+            self.show_temp_message("#delete-subject-message", "[red]That subject could not be found.[/red]")
             self.update_dashboard()
             return
  
@@ -632,9 +672,10 @@ class StudyStreakApp(App):
  
         delete_subject_message = self.query_one("#delete-subject-message", Static)
  
-        delete_subject_message.update(
+        self.show_temp_message(
+            "#delete-subject-message",
             f"[yellow]Deleted subject: {subject}. "
-            f"Removed {deleted_session_count} linked session(s).[/yellow]"
+            f"Removed {deleted_session_count} linked session(s).[/yellow]",
         )
  
     def start_focus_session(self, subject, minutes):
@@ -648,8 +689,9 @@ class StudyStreakApp(App):
         if self.focus_timer is not None:
             self.focus_timer.stop()
  
-        focus_message.update(
-            "[yellow]Focus session started. Stay focused until the timer ends.[/yellow]"
+        self.show_temp_message(
+            "#focus-message",
+            "[yellow]Focus session started. Stay focused until the timer ends.[/yellow]",
         )
  
         self.update_focus_display()
@@ -662,6 +704,7 @@ class StudyStreakApp(App):
         minutes_left = self.focus_seconds_left // 60
         seconds_left = self.focus_seconds_left % 60
  
+        focus_timer.display = True
         focus_timer.update(
             f"[bold orange1]Focus timer:[/bold orange1] "
             f"{minutes_left:02d}:{seconds_left:02d}"
@@ -709,7 +752,7 @@ class StudyStreakApp(App):
                     website=None,
                 )
             except ValueError:
-                focus_message.update("[yellow]Focus saved locally, but server upload failed.[/yellow]")
+                self.show_temp_message("#focus-message", "[yellow]Focus saved locally, but server upload failed.[/yellow]")
 
 
         self.update_dashboard()
@@ -724,9 +767,10 @@ class StudyStreakApp(App):
         self.focus_subject = None
         self.focus_minutes = 0
  
-        focus_timer.update("[bold green]Focus finished.[/bold green]")
-        focus_message.update(
-            f"[green]Completed focus session. Logged {completed_minutes} minutes of {completed_subject} study.[/green]"
+        self.show_temp_message("#focus-timer", "[bold green]Focus finished.[/bold green]")
+        self.show_temp_message(
+            "#focus-message",
+            f"[green]Completed focus session. Logged {completed_minutes} minutes of {completed_subject} study.[/green]",
         )
  
         if not already_studied_today:
@@ -745,8 +789,9 @@ class StudyStreakApp(App):
         self.focus_minutes = 0
  
         focus_timer.update("")
-        focus_message.update("[yellow]Focus session cancelled. No study time was logged.[/yellow]")
- 
+        focus_timer.display = False
+        self.show_temp_message("#focus-message", "[yellow]Focus session cancelled. No study time was logged.[/yellow]")
+
     def on_select_changed(self, event: Select.Changed) -> None:
         data = load_data()
 
@@ -788,7 +833,7 @@ class StudyStreakApp(App):
         remembered_password = get_remembered_password(remembered_username)
 
         if remembered_password is None:
-            login_message.update("[yellow]Enter your password to continue[/yellow]")
+            self.show_temp_message("#login-message", "[yellow]Enter your password to continue[/yellow]")
             return
 
         try:
@@ -796,7 +841,7 @@ class StudyStreakApp(App):
             set_session(remembered_username, remembered_password, private_data)
         except ValueError:
             clear_remembered_login()
-            login_message.update("[red]Saved login expired. Please log in again.[/red]")
+            self.show_temp_message("#login-message", "[red]Saved login expired. Please log in again.[/red]")
             return
         self.show_main_app()
 
@@ -838,7 +883,7 @@ class StudyStreakApp(App):
             main_container.display = False
             login_container.display = True
 
-            login_message.update("[yellow]Logged out.[/yellow]")
+            self.show_temp_message("#login-message", "[yellow]Logged out.[/yellow]")
             return
         if event.button.id == "login-button":
             username_input = self.query_one("#login-username-input", Input)
@@ -849,11 +894,11 @@ class StudyStreakApp(App):
             password = password_input.value
 
             if username == "":
-                login_message.update("[red]Please enter your username.[/red]")
+                self.show_temp_message("#login-message", "[red]Please enter your username.[/red]")
                 return
             
             if password == "":
-                login_message.update("[red]Please enter your password.[/red]")
+                self.show_temp_message("#login-message", "[red]Please enter your password.[/red]")
                 return
             
             try:
@@ -865,7 +910,7 @@ class StudyStreakApp(App):
                     set_server_token(server_token)
                 
                 except ValueError:
-                    login_message.update("[yellow]Local login worked, but server login failed.[/yellow]")
+                    self.show_temp_message("#login-message", "[yellow]Local login worked, but server login failed.[/yellow]")
 
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
@@ -875,11 +920,11 @@ class StudyStreakApp(App):
                     clear_remembered_login()
 
             except ValueError as error:
-                login_message.update(f"[red]{error}[/red]")
+                self.show_temp_message("#login-message", f"[red]{error}[/red]")
                 return
             
             password_input.value = ""
-            login_message.update("[green]Login successful.[/green]")
+            self.show_temp_message("#login-message", "[green]Login successful.[/green]")
             self.show_main_app()
             return
 
@@ -892,11 +937,11 @@ class StudyStreakApp(App):
             password = password_input.value
 
             if username == "":
-                login_message.update("[red]Please enter a username.[/red]")
+                self.show_temp_message("#login-message", "[red]Please enter a username.[/red]")
                 return
 
             if password == "":
-                login_message.update("[red]Please enter a password.[/red]")
+                self.show_temp_message("#login-message", "[red]Please enter a password.[/red]")
                 return
 
             try:
@@ -905,7 +950,7 @@ class StudyStreakApp(App):
                 try:
                     signup_to_server(username, password)
                 except ValueError:
-                    login_message.update("[yellow]Local account created, but server signup failed.[/yellow]")
+                    self.show_temp_message("#login-message", "[yellow]Local account created, but server signup failed.[/yellow]")
                     return
 
                 private_data = login_account(username, password)
@@ -915,7 +960,7 @@ class StudyStreakApp(App):
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
                 except ValueError:
-                    login_message.update("[yellow]Local login worked, but server login failed.[/yellow]")
+                    self.show_temp_message("#login-message", "[yellow]Local login worked, but server login failed.[/yellow]")
 
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
@@ -924,11 +969,11 @@ class StudyStreakApp(App):
                 else:
                     clear_remembered_login()
             except ValueError as error:
-                login_message.update(f"[red]{error}[/red]")
+                self.show_temp_message("#login-message", f"[red]{error}[/red]")
                 return
 
             password_input.value = ""
-            login_message.update("[green]Account created and logged in.[/green]")
+            self.show_temp_message("#login-message", "[green]Account created and logged in.[/green]")
             self.show_main_app()
             return
 
@@ -995,6 +1040,7 @@ class StudyStreakApp(App):
             subject_select.clear()
             minutes_input.value = ""
             message.update("")
+            message.display = False
             return
  
         if event.button.id == "delete-selected-button":
@@ -1005,18 +1051,18 @@ class StudyStreakApp(App):
             data = load_data()
  
             if len(data["sessions"]) == 0:
-                manage_message.update("[yellow]There are no sessions to delete.[/yellow]")
+                self.show_temp_message("#manage-message", "[yellow]There are no sessions to delete.[/yellow]")
                 self.update_dashboard()
                 return
  
             if selected_index is None or selected_index is False:
-                manage_message.update("[yellow]Please select a session to delete.[/yellow]")
+                self.show_temp_message("#manage-message", "[yellow]Please select a session to delete.[/yellow]")
                 return
  
             selected_index = int(selected_index)
  
             if selected_index < 0 or selected_index >= len(data["sessions"]):
-                manage_message.update("[red]Selected session could not be found.[/red]")
+                self.show_temp_message("#manage-message", "[red]Selected session could not be found.[/red]")
                 self.update_dashboard()
                 return
  
@@ -1029,8 +1075,9 @@ class StudyStreakApp(App):
  
             self.update_dashboard()
  
-            manage_message.update(
-                f"[yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]"
+            self.show_temp_message(
+                "#manage-message",
+                f"[yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]",
             )
             return
  
@@ -1041,17 +1088,17 @@ class StudyStreakApp(App):
             goal_text = goal_input.value.strip()
  
             if goal_text == "":
-                settings_message.update("[red]Please enter a weekly goal.[/red]")
+                self.show_temp_message("#settings-message", "[red]Please enter a weekly goal.[/red]")
                 return
  
             if not goal_text.isdigit():
-                settings_message.update("[red]Weekly goal must be a whole number.[/red]")
+                self.show_temp_message("#settings-message", "[red]Weekly goal must be a whole number.[/red]")
                 return
  
             weekly_goal = int(goal_text)
  
             if weekly_goal <= 0:
-                settings_message.update("[red]Weekly goal must be more than 0.[/red]")
+                self.show_temp_message("#settings-message", "[red]Weekly goal must be more than 0.[/red]")
                 return
  
             data = load_data()
@@ -1060,8 +1107,9 @@ class StudyStreakApp(App):
  
             self.update_dashboard()
  
-            settings_message.update(
-                f"[green]Weekly goal updated to {weekly_goal} minutes.[/green]"
+            self.show_temp_message(
+                "#settings-message",
+                f"[green]Weekly goal updated to {weekly_goal} minutes.[/green]",
             )
  
             goal_input.value = ""
@@ -1076,7 +1124,7 @@ class StudyStreakApp(App):
             website = new_subject_website_input.value.strip()
  
             if new_subject == "":
-                subject_message.update("[red]Please enter a subject name.[/red]")
+                self.show_temp_message("#subject-message", "[red]Please enter a subject name.[/red]")
                 return
  
             website = format_website_url(website)
@@ -1084,7 +1132,7 @@ class StudyStreakApp(App):
             data = load_data()
  
             if new_subject in data["subjects"]:
-                subject_message.update("[yellow]That subject already exists.[/yellow]")
+                self.show_temp_message("#subject-message", "[yellow]That subject already exists.[/yellow]")
                 return
  
             data["subjects"].append(new_subject)
@@ -1097,10 +1145,11 @@ class StudyStreakApp(App):
             self.update_dashboard()
  
             if website == "":
-                subject_message.update(f"[green]Added subject: {new_subject}[/green]")
+                self.show_temp_message("#subject-message", f"[green]Added subject: {new_subject}[/green]")
             else:
-                subject_message.update(
-                    f"[green]Added subject: {new_subject} with website: {website}[/green]"
+                self.show_temp_message(
+                    "#subject-message",
+                    f"[green]Added subject: {new_subject} with website: {website}[/green]",
                 )
  
             new_subject_input.value = ""
@@ -1116,13 +1165,13 @@ class StudyStreakApp(App):
             website = edit_website_input.value.strip()
  
             if is_blank_select_value(selected_subject):
-                edit_website_message.update("[yellow]Please choose a subject first.[/yellow]")
+                self.show_temp_message("#edit-website-message", "[yellow]Please choose a subject first.[/yellow]")
                 return
  
             data = load_data()
  
             if str(selected_subject) not in data["subjects"]:
-                edit_website_message.update("[red]That subject could not be found.[/red]")
+                self.show_temp_message("#edit-website-message", "[red]That subject could not be found.[/red]")
                 self.update_dashboard()
                 return
  
@@ -1134,12 +1183,14 @@ class StudyStreakApp(App):
             self.update_dashboard()
  
             if website == "":
-                edit_website_message.update(
-                    f"[yellow]Cleared website for {selected_subject}.[/yellow]"
+                self.show_temp_message(
+                    "#edit-website-message",
+                    f"[yellow]Cleared website for {selected_subject}.[/yellow]",
                 )
             else:
-                edit_website_message.update(
-                    f"[green]Updated website for {selected_subject}: {website}[/green]"
+                self.show_temp_message(
+                    "#edit-website-message",
+                    f"[green]Updated website for {selected_subject}: {website}[/green]",
                 )
  
             return
@@ -1151,7 +1202,7 @@ class StudyStreakApp(App):
             selected_subject = delete_subject_select.value
  
             if is_blank_select_value(selected_subject):
-                delete_subject_message.update("[yellow]Please choose a subject to delete.[/yellow]")
+                self.show_temp_message("#delete-subject-message", "[yellow]Please choose a subject to delete.[/yellow]")
                 return
  
             self.push_screen(DeleteSubjectConfirmScreen(str(selected_subject)))
@@ -1167,21 +1218,21 @@ class StudyStreakApp(App):
             data = load_data()
  
             if is_blank_select_value(subject):
-                focus_message.update("[red]Please choose a subject first.[/red]")
+                self.show_temp_message("#focus-message", "[red]Please choose a subject first.[/red]")
                 return
  
             if website == "":
                 website = data["subject_websites"].get(str(subject), "")
  
             if website == "":
-                focus_message.update("[red]No website saved for this subject. Please enter one manually.[/red]")
+                self.show_temp_message("#focus-message", "[red]No website saved for this subject. Please enter one manually.[/red]")
                 return
  
             website = format_website_url(website)
  
             webbrowser.open(website)
  
-            focus_message.update(f"[green]Opened study website: {website}[/green]")
+            self.show_temp_message("#focus-message", f"[green]Opened study website: {website}[/green]")
             return
  
         if event.button.id == "start-focus-button":
@@ -1193,21 +1244,21 @@ class StudyStreakApp(App):
             minutes_text = focus_minutes_input.value.strip()
  
             if is_blank_select_value(subject):
-                focus_message.update("[red]Please choose a subject.[/red]")
+                self.show_temp_message("#focus-message", "[red]Please choose a subject.[/red]")
                 return
  
             if minutes_text == "":
-                focus_message.update("[red]Please enter a focus duration.[/red]")
+                self.show_temp_message("#focus-message", "[red]Please enter a focus duration.[/red]")
                 return
  
             if not minutes_text.isdigit():
-                focus_message.update("[red]Focus duration must be a whole number.[/red]")
+                self.show_temp_message("#focus-message", "[red]Focus duration must be a whole number.[/red]")
                 return
  
             minutes = int(minutes_text)
  
             if minutes <= 0:
-                focus_message.update("[red]Focus duration must be more than 0.[/red]")
+                self.show_temp_message("#focus-message", "[red]Focus duration must be more than 0.[/red]")
                 return
  
             self.start_focus_session(str(subject), minutes)
@@ -1219,10 +1270,12 @@ class StudyStreakApp(App):
             try:
                 rows = get_leaderboard()
             except ValueError:
+                leaderboard.display = True
                 leaderboard.update("[red]Could not load leaderboard.[/red]")
                 return
             
             if len(rows) == 0:
+                leaderboard.display = True
                 leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
                 return
             
@@ -1232,6 +1285,7 @@ class StudyStreakApp(App):
                 lines.append(
                     f"{index}. {row['display_name']} - {row['total_minutes']} minutes"
                 )
+            leaderboard.display = True
             leaderboard.update("\n".join(lines))
             return
 
@@ -1249,21 +1303,21 @@ class StudyStreakApp(App):
  
 
             if is_blank_select_value(subject):
-                message.update("[red]Please choose a subject.[/red]")
+                self.show_temp_message("#message", "[red]Please choose a subject.[/red]")
                 return
  
             if minutes_text == "":
-                message.update("[red]Please enter the number of minutes.[/red]")
+                self.show_temp_message("#message", "[red]Please enter the number of minutes.[/red]")
                 return
  
             if not minutes_text.isdigit():
-                message.update("[red]Minutes must be a whole number.[/red]")
+                self.show_temp_message("#message", "[red]Minutes must be a whole number.[/red]")
                 return
  
             minutes = int(minutes_text)
  
             if minutes <= 0:
-                message.update("[red]Minutes must be more than 0.[/red]")
+                self.show_temp_message("#message", "[red]Minutes must be more than 0.[/red]")
                 return
  
             data = load_data()
@@ -1286,7 +1340,7 @@ class StudyStreakApp(App):
             if not already_studied_today:
                 self.show_streak_effect(streak_count)
  
-            message.update(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
+            self.show_temp_message("#message", f"[green]Logged {minutes} minutes of {subject} study.[/green]")
  
             subject_select.clear()
             minutes_input.value = ""

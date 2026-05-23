@@ -11,3 +11,5 @@ python-jose[cryptography]
 pydantic
 requests
 python-dotenv
+sqlalchemy
+python-multipart
