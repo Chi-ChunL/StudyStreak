@@ -1,6 +1,11 @@
+import os
+
+from dotenv import load_dotenv
 import requests
 
-BASE_URL = "http://127.0.0.1:8000"
+
+load_dotenv()
+BASE_URL = os.getenv("STUDYSTREAK_API_URL", "http://127.0.0.1:8000")
 
 def login_to_server(username: str, password: str) -> str:
     #login to backend server

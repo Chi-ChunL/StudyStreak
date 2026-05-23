@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import User
+from dotenv import load_dotenv
+
+load_dotenv()
 
 password_hasher = PasswordHasher()
 

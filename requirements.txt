@@ -10,3 +10,4 @@ uvicorn
 python-jose[cryptography]
 pydantic
 requests
+python-dotenv
