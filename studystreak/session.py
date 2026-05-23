@@ -5,6 +5,7 @@ from studystreak.accounts import save_user_private_data
 _current_username: str | None = None
 _current_password: str | None = None
 _current_private_data: dict[str, Any] | None = None
+_server_token: str | None = None
 
 def set_session(username: str, password: str, private_data: dict[str, Any]) -> None:
     #store active login for this run
@@ -21,10 +22,12 @@ def clear_session() -> None:
     global _current_username
     global _current_password
     global _current_private_data
+    global _server_token
 
     _current_username = None
     _current_password = None
     _current_private_data = None
+    _server_token = None
 
 def is_logged_in() -> bool:
     #check if a user is logged in
@@ -78,4 +81,13 @@ def save_session_data(private_data: dict[str, Any]) -> None:
 
     save_user_private_data(username, password, private_data)
     _current_private_data = private_data
-    
+
+def set_server_token(token: str) -> None:
+    #store server login token
+    global _server_token
+
+    _server_token = token
+
+def get_server_token() -> str | None:
+    #get server login token
+    return _server_token

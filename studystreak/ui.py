@@ -18,13 +18,20 @@ from textual.widgets import (
  
 from studystreak.storage import load_data, save_data
 from studystreak.accounts import create_account, login_account, logout_account
-from studystreak.session import set_session, clear_session, get_session_username
+from studystreak.session import set_session, clear_session, get_session_username, set_server_token, get_server_token
 from studystreak.auth_cache import (
     save_remembered_login,
     get_remembered_password,
     get_remembered_username,
     clear_remembered_login,
 )
+from studystreak.api_client import (
+    login_to_server, 
+    signup_to_server,
+    upload_focus_session, 
+    get_leaderboard,
+)
+
 
 
 
@@ -409,7 +416,12 @@ class StudyStreakApp(App):
  
                     yield Static("", id="focus-timer")
                     yield Static("", id="focus-message")
- 
+
+                with TabPane("Leaderboard", id="leaderboard-tab"):
+                    yield Static("Server leaderboard", id="leaderboard-title")
+                    yield Button("Refresh Leaderboard", id="refresh-leaderboard-button")
+                    yield Static("", id="leaderboard")
+
                 with TabPane("Settings", id="settings-tab"):
                     yield Static("Settings", id="settings-title")
  
@@ -685,7 +697,21 @@ class StudyStreakApp(App):
  
         data["sessions"].append(session)
         save_data(data)
- 
+        
+        server_token = get_server_token()
+
+        if server_token is not None:
+            try:
+                upload_focus_session(
+                    token=server_token,
+                    subject=str(self.focus_subject).lower(),
+                    minutes=self.focus_minutes,
+                    website=None,
+                )
+            except ValueError:
+                focus_message.update("[yellow]Focus saved locally, but server upload failed.[/yellow]")
+
+
         self.update_dashboard()
  
         updated_data = load_data()
@@ -834,6 +860,13 @@ class StudyStreakApp(App):
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
 
+                try:
+                    server_token = login_to_server(username, password)
+                    set_server_token(server_token)
+                
+                except ValueError:
+                    login_message.update("[yellow]Local login worked, but server login failed.[/yellow]")
+
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
                 if remember_checkbox.value:
@@ -868,8 +901,21 @@ class StudyStreakApp(App):
 
             try:
                 create_account(username=username, password=password)
+                
+                try:
+                    signup_to_server(username, password)
+                except ValueError:
+                    login_message.update("[yellow]Local account created, but server signup failed.[/yellow]")
+                    return
+
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
+
+                try:
+                    server_token = login_to_server(username, password)
+                    set_server_token(server_token)
+                except ValueError:
+                    login_message.update("[yellow]Local login worked, but server login failed.[/yellow]")
 
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
@@ -1166,11 +1212,33 @@ class StudyStreakApp(App):
  
             self.start_focus_session(str(subject), minutes)
             return
- 
+
+        if event.button.id == "refresh-leaderboard-button":
+            leaderboard = self.query_one("#leaderboard", Static)
+
+            try:
+                rows = get_leaderboard()
+            except ValueError:
+                leaderboard.update("[red]Could not load leaderboard.[/red]")
+                return
+            
+            if len(rows) == 0:
+                leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
+                return
+            
+            lines = ["[bold]Leaderboard[/bold]"]
+
+            for index, row in enumerate(rows, start=1):
+                lines.append(
+                    f"{index}. {row['display_name']} - {row['total_minutes']} minutes"
+                )
+            leaderboard.update("\n".join(lines))
+            return
+
         if event.button.id == "cancel-focus-button":
             self.cancel_focus_session()
             return
- 
+
         if event.button.id == "log-button":
             subject_select = self.query_one("#subject-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)

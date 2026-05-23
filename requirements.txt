@@ -5,3 +5,8 @@ argon2-cffi
 cryptography
 pwinput
 keyring
+fastapi
+uvicorn
+python-jose[cryptography]
+pydantic
+requests

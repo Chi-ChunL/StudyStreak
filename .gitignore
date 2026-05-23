@@ -1,40 +1,35 @@
-# Python cache files
+#python cache
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 
-# Virtual environments
+#virtual environment
 venv/
 .venv/
 env/
-ENV/
 
-# Local study data
+#env files and secrets
+.env
+*.env
+
+#local study data
 study_data.json
 accounts.json
-
-# Environment variables
-.env
-
-# Build / packaging files
-build/
-dist/
-*.egg-info/
-
-# Pytest / coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Textual cache / logs
-.textual/
-*.log
 auth_cache.json
 
-# IDE / editor files
+#local backend database
+studystreak_server.db
+*.sqlite
+*.sqlite3
+*.db
+
+#logs
+*.log
+
+#editor files
 .vscode/
 .idea/
 
-# OS files
+#os files
 .DS_Store
 Thumbs.db
