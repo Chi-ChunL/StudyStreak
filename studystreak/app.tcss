@@ -648,3 +648,13 @@ TabPane {
     padding: 1;
     margin-top: 1;
 }
+
+
+#server-status-label {
+    width: 100%;
+    height: 1;
+    color: #cfcfcf;
+    text-align: right;
+    margin-bottom: 0;
+}
+

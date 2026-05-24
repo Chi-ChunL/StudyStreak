@@ -30,6 +30,7 @@ from studystreak.api_client import (
     signup_to_server,
     upload_focus_session, 
     get_leaderboard,
+    check_server_status
 )
 
 
@@ -344,6 +345,7 @@ class StudyStreakApp(App):
             yield Static("", id="login-message")
 
         with Container(id="main-container"):
+            yield Static("", id="server-status-label")
             yield Static("StudyStreak CLI", id="title")
             yield Static("Track your study streak and log your progress.", id="subtitle")
 
@@ -751,6 +753,7 @@ class StudyStreakApp(App):
                     minutes=self.focus_minutes,
                     website=None,
                 )
+                self.refresh_leaderboard()
             except ValueError:
                 self.show_temp_message("#focus-message", "[yellow]Focus saved locally, but server upload failed.[/yellow]")
 
@@ -845,6 +848,15 @@ class StudyStreakApp(App):
             return
         self.show_main_app()
 
+    def update_server_status(self):
+        #update server connection label
+        server_status_label = self.query_one("#server-status-label", Static)
+
+        if check_server_status():
+            server_status_label.update("[green]Server: Connected[/green]")
+        else:
+            server_status_label.update("[red]Server: Offline[/red]")
+
     def show_main_app(self):
         #show main app after login
         login_container = self.query_one("#login-container")
@@ -859,7 +871,31 @@ class StudyStreakApp(App):
         main_container.display = True
 
         self.logged_in = True
+        self.update_server_status()
         self.update_dashboard()
+        self.refresh_leaderboard()
+
+    def refresh_leaderboard(self):
+        #refresh server leaderboard
+        leaderboard = self.query_one("#leaderboard", Static)
+
+        try:
+            rows = get_leaderboard()
+        except ValueError:
+            leaderboard.update("[red]Could not load leaderboard.[/red]")
+            return
+        
+        if len(rows) == 0:
+            leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
+            return
+        
+        lines = ["[bold]Leaderboard[/bold]"]
+
+        for index, row in enumerate(rows, start=1):
+            lines.append(
+                f"{index}. {row['display_name']} - {row['total_minutes']} minutes"
+            )
+        leaderboard.update("\n".join(lines))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         
@@ -1265,28 +1301,8 @@ class StudyStreakApp(App):
             return
 
         if event.button.id == "refresh-leaderboard-button":
-            leaderboard = self.query_one("#leaderboard", Static)
-
-            try:
-                rows = get_leaderboard()
-            except ValueError:
-                leaderboard.display = True
-                leaderboard.update("[red]Could not load leaderboard.[/red]")
-                return
-            
-            if len(rows) == 0:
-                leaderboard.display = True
-                leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
-                return
-            
-            lines = ["[bold]Leaderboard[/bold]"]
-
-            for index, row in enumerate(rows, start=1):
-                lines.append(
-                    f"{index}. {row['display_name']} - {row['total_minutes']} minutes"
-                )
-            leaderboard.display = True
-            leaderboard.update("\n".join(lines))
+            #refresh leaderboard button
+            self.refresh_leaderboard()
             return
 
         if event.button.id == "cancel-focus-button":

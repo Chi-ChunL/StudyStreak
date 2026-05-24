@@ -74,3 +74,16 @@ def signup_to_server(username: str, password: str, display_name: str | None = No
         raise ValueError("Server signup failed.")
 
 
+def check_server_status() -> bool:
+    #checl if backend server is online
+    try:
+        response = requests.get(
+            f"{BASE_URL}/",
+            timeout=5,
+        )
+
+        return response.status_code == 200
+    
+    except requests.RequestException:
+        return False
+    
