@@ -1,9 +1,14 @@
+/* #------------------screen------------------- */
+
 Screen {
     align: center middle;
 }
 
+
+/* #------------------main container------------------- */
+
 #main-container {
-    width: 85;
+    width: 90;
     height: auto;
     border: round grey;
     padding: 1 2;
@@ -22,15 +27,59 @@ Screen {
     margin-bottom: 1;
 }
 
-Input {
+#global-message {
+    margin-top: 1;
+    text-align: center;
+    color: yellow;
+}
+
+
+/* #------------------server status------------------- */
+
+#server-status-label {
+    width: 100%;
+    height: 1;
+    text-align: right;
+    color: #cfcfcf;
+    margin-bottom: 0;
+}
+
+
+/* #------------------account row------------------- */
+
+#account-row {
+    width: 100%;
+    height: 3;
+    align: center middle;
     margin-bottom: 1;
 }
 
-#button-row {
-    height: auto;
-    align: center middle;
-    margin-top: 1;
-    color: grey;
+#account-label {
+    width: 1fr;
+    color: #cfcfcf;
+}
+
+#logout-button {
+    width: 10;
+    height: 1;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    padding: 0;
+    content-align: center middle;
+}
+
+#logout-button:hover {
+    background: #222222;
+    color: white;
+    border: none;
+}
+
+
+/* #------------------general widgets------------------- */
+
+Input {
+    margin-bottom: 1;
 }
 
 Button {
@@ -44,6 +93,121 @@ Button:hover {
     background: #2b2b2b;
     color: white;
     border: tall #888888;
+}
+
+TabbedContent {
+    height: auto;
+}
+
+TabPane {
+    padding: 1;
+}
+
+
+/* #------------------login screen------------------- */
+
+#login-container {
+    width: 60;
+    height: auto;
+    border: round grey;
+    padding: 1 2;
+}
+
+#login-title {
+    text-align: center;
+    text-style: bold;
+    color: grey;
+    margin-bottom: 1;
+}
+
+#login-subtitle {
+    text-align: center;
+    color: white;
+    margin-bottom: 1;
+}
+
+#login-username-input,
+#login-password-input {
+    margin-bottom: 1;
+}
+
+#remember-me-checkbox {
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#login-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#login-button,
+#create-account-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#login-button:hover,
+#create-account-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#login-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+
+/* #------------------dashboard------------------- */
+
+#dashboard {
+    text-align: center;
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#recent-sessions {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+
+/* #------------------subject stats------------------- */
+
+#subject-stats {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+
+/* #------------------log session------------------- */
+
+#log-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#subject-select {
+    margin-bottom: 1;
+}
+
+#button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+    color: grey;
 }
 
 #log-button {
@@ -64,34 +228,8 @@ Button:hover {
     color: green;
 }
 
-#dashboard {
-    text-align: center;
-    color: #cfcfcf;
-    border: round #555555;
-    padding: 1;
-    margin-bottom: 1;
-}
 
-#recent-sessions {
-    color: #cfcfcf;
-    border: round #555555;
-    padding: 1;
-    margin-bottom: 1;
-}
-
-TabbedContent {
-    height: auto;
-}
-
-TabPane {
-    padding: 1;
-}
-
-#log-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-bottom: 1;
-}
+/* #------------------manage session------------------- */
 
 #manage-title {
     text-align: center;
@@ -116,9 +254,9 @@ TabPane {
 }
 
 #delete-selected-button:hover {
-    background: #2a1f1f;
-    color: #d6c2c2;
-    border: tall #6b4a4a;
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
 }
 
 #manage-message {
@@ -126,6 +264,140 @@ TabPane {
     text-align: center;
     color: yellow;
 }
+
+
+/* #------------------focus mode------------------- */
+
+#focus-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#focus-subject-select,
+#focus-website-input,
+#focus-minutes-input {
+    margin-bottom: 1;
+}
+
+#focus-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#open-website-button,
+#start-focus-button,
+#cancel-focus-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+    margin: 0 1;
+}
+
+#open-website-button:hover,
+#start-focus-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#cancel-focus-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#cancel-focus-button:hover {
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
+}
+
+#focus-timer {
+    margin-top: 2;
+    text-align: center;
+    color: orange;
+}
+
+#focus-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+
+/* #--------------------------leaderboard-------------------------- */
+
+#leaderboard-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#leaderboard-period-row {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-bottom: 1;
+}
+
+#leaderboard-today-button,
+#leaderboard-week-button,
+#leaderboard-all-button {
+    width: 13;
+    height: 1;
+    margin: 0 1;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    padding: 0;
+    content-align: center middle;
+}
+
+#leaderboard-today-button:hover,
+#leaderboard-week-button:hover,
+#leaderboard-all-button:hover {
+    background: #222222;
+    color: white;
+    border: none;
+}
+
+#leaderboard-refresh-row {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 0;
+    margin-bottom: 1;
+}
+
+#refresh-leaderboard-button {
+    width: 24;
+    height: 3;
+    margin: 0;
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+    content-align: center middle;
+}
+
+#refresh-leaderboard-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#leaderboard {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-top: 1;
+    margin-bottom: 1;
+    height: auto;
+}
+
+
+/* #------------------settings layout------------------- */
 
 #settings-title {
     text-align: center;
@@ -168,7 +440,7 @@ TabPane {
 #settings-subjects-button:hover {
     background: #222222;
     color: white;
-    border-left: thick #888888;
+    border: none;
 }
 
 #weekly-goal-panel,
@@ -177,7 +449,47 @@ TabPane {
     height: auto;
 }
 
-#goal-panel-title,
+
+/* #------------------weekly goal settings------------------- */
+
+#goal-panel-title {
+    text-align: center;
+    color: #cfcfcf;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#weekly-goal-input {
+    margin-bottom: 1;
+}
+
+#settings-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#save-goal-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#save-goal-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#settings-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+
+/* #------------------subject settings------------------- */
+
 #subject-panel-title {
     text-align: center;
     color: #cfcfcf;
@@ -185,130 +497,77 @@ TabPane {
     margin-bottom: 1;
 }
 
-#weekly-goal-input,
-#new-subject-input,
-#new-subject-website-input {
+#subject-subnav {
+    width: 100%;
+    height: 3;
+    align: center middle;
     margin-bottom: 1;
 }
 
-#settings-button-row,
-#subject-button-row {
-    height: auto;
-    align: center middle;
-    margin-top: 1;
+#subject-add-tab,
+#subject-edit-tab,
+#subject-delete-tab {
+    width: 14;
+    height: 1;
+    margin: 0 2;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    content-align: center middle;
+    padding: 0;
 }
 
-#save-goal-button,
-#add-subject-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#save-goal-button:hover,
-#add-subject-button:hover {
-    background: #3a3a3a;
+#subject-add-tab:hover,
+#subject-edit-tab:hover,
+#subject-delete-tab:hover {
     color: white;
-    border: tall #aaaaaa;
+    background: #222222;
+    border: none;
 }
 
-#settings-message,
-#subject-message {
-    margin-top: 1;
-    text-align: center;
-    color: green;
-}
-
-#global-message {
-    margin-top: 1;
-    text-align: center;
-    color: yellow;
-}
-
-#streak-effect-box {
-    width: 45;
+#subject-add-panel,
+#subject-edit-panel,
+#subject-delete-panel {
+    width: 100%;
     height: auto;
-    border: round orange;
-    background: #111111;
-    padding: 1 2;
-    align: center middle;
 }
 
-#streak-fire {
-    text-align: center;
-}
-
-#streak-effect-title {
-    text-align: center;
-    margin-top: 1;
-}
-
-#streak-effect-message {
-    text-align: center;
-    margin-top: 1;
-}
-
-#subject-select {
-    margin-bottom: 1;
-}
-
-#subject-settings-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-top: 2;
-    margin-bottom: 1;
-}
-
-#new-subject-input {
-    margin-bottom: 1;
-}
-
-#subject-button-row {
-    height: auto;
-    align: center middle;
-    margin-top: 1;
-}
-
-#add-subject-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#add-subject-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
-#subject-message {
-    margin-top: 1;
-    text-align: center;
-    color: green;
-}
-
-#subject-stats {
-    color: #cfcfcf;
-    border: round #555555;
-    padding: 1;
-    margin-bottom: 1;
-}
-
+#subject-add-title,
+#edit-website-title,
 #delete-subject-title {
     text-align: center;
     color: #cfcfcf;
-    margin-top: 2;
     margin-bottom: 1;
 }
 
+#new-subject-input,
+#new-subject-website-input,
+#edit-website-subject-select,
+#edit-website-input,
 #delete-subject-select {
     margin-bottom: 1;
 }
 
+#subject-button-row,
+#edit-website-button-row,
 #delete-subject-button-row {
     height: auto;
     align: center middle;
     margin-top: 1;
+}
+
+#add-subject-button,
+#update-website-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#add-subject-button:hover,
+#update-website-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
 }
 
 #delete-subject-button {
@@ -323,11 +582,20 @@ TabPane {
     border: tall #a66a6a;
 }
 
+#subject-message,
+#edit-website-message,
 #delete-subject-message {
     margin-top: 1;
     text-align: center;
+    color: green;
+}
+
+#delete-subject-message {
     color: yellow;
 }
+
+
+/* #------------------delete confirmation modal------------------- */
 
 #delete-subject-confirm-box {
     width: 60;
@@ -381,306 +649,29 @@ TabPane {
     border: tall #c06a6a;
 }
 
-#focus-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-bottom: 1;
-}
 
-#focus-subject-select,
-#focus-website-input,
-#focus-minutes-input {
-    margin-bottom: 1;
-}
+/* #------------------streak effect modal------------------- */
 
-#focus-button-row {
+#streak-effect-box {
+    width: 45;
     height: auto;
-    align: center middle;
-    margin-top: 1;
-}
-
-#open-website-button,
-#start-focus-button,
-#cancel-focus-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-    margin: 0 1;
-}
-
-#open-website-button:hover,
-#start-focus-button:hover,
-#cancel-focus-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
-#cancel-focus-button {
-    background: #2a1f1f;
-    color: #d6c2c2;
-    border: tall #6b4a4a;
-}
-
-#cancel-focus-button:hover {
-    background: #3a2929;
-    color: white;
-    border: tall #a66a6a;
-}
-
-#focus-timer {
-    margin-top: 2;
-    text-align: center;
-    color: orange;
-}
-
-#focus-message {
-    margin-top: 1;
-    text-align: center;
-    color: green;
-}
-
-#edit-website-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-top: 2;
-    margin-bottom: 1;
-}
-
-#edit-website-subject-select,
-#edit-website-input {
-    margin-bottom: 1;
-}
-
-#edit-website-button-row {
-    height: auto;
-    align: center middle;
-    margin-top: 1;
-}
-
-#update-website-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#update-website-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
-#edit-website-message {
-    margin-top: 1;
-    text-align: center;
-    color: green;
-}
-
-#subject-add-panel,
-#subject-edit-panel,
-#subject-delete-panel {
-    width: 100%;
-    height: auto;
-}
-
-#subject-add-title,
-#edit-website-title,
-#delete-subject-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-bottom: 1;
-}
-
-#subject-subnav {
-    width: 25;
-    height: 2;
-    border-bottom: solid #333333;
-    align: center middle;
-    margin-bottom: 2;
-}
-
-#subject-add-tab,
-#subject-edit-tab {
-    min-width: 0;
-    width: 7;
-    height: 1;
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    color: #b8b8b8;
-    border: none;
-    content-align: center middle;
-}
-
-#subject-delete-tab {
-    min-width: 0;
-    width: 8;
-    height: 1;
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    color: #b8b8b8;
-    border: none;
-    content-align: center middle;
-}
-
-#subject-add-tab:hover,
-#subject-edit-tab:hover,
-#subject-delete-tab:hover {
-    color: white;
-    background: #222222;
-    border: none;
-}
-
-#subject-add-tab:focus,
-#subject-edit-tab:focus,
-#subject-delete-tab:focus {
-    color: white;
-    background: #222222;
-    border: none;
-}
-
-#login-container {
-    width: 60;
-    height: auto;
-    border: round grey;
+    border: round orange;
+    background: #111111;
     padding: 1 2;
-}
-
-#login-title {
-    text-align: center;
-    text-style: bold;
-    color: grey;
-    margin-bottom: 1;
-}
-
-#login-subtitle {
-    text-align: center;
-    color: white;
-    margin-bottom: 1;
-}
-
-#login-username-input,
-#login-password-input {
-    margin-bottom: 1;
-}
-
-#login-button-row {
-    height: auto;
     align: center middle;
+}
+
+#streak-fire {
+    text-align: center;
+}
+
+#streak-effect-title {
+    text-align: center;
     margin-top: 1;
 }
 
-#login-button,
-#create-account-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#login-button:hover,
-#create-account-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
-#login-message {
-    margin-top: 1;
+#streak-effect-message {
     text-align: center;
-    color: green;
-}
-
-#account-row {
-    width: 100%;
-    height: 3;
-    align: center middle;
-    margin-bottom: 1;
-}
-
-#account-label {
-    width: 1fr;
-    color: #cfcfcf;
-}
-
-#logout-button {
-    width: 10;
-    height: 1;
-    background: transparent;
-    color: #b8b8b8;
-    border: none;
-    padding: 0;
-    content-align: center middle;
-}
-
-#logout-button:hover {
-    background: #222222;
-    color: white;
-    border: none;
-}
-
-#remember-me-checkbox {
-    color: #cfcfcf;
-    margin-bottom: 1;
-}
-
-#leaderboard-title {
-    text-align: center;
-    color: #cfcfcf;
-    margin-bottom: 1;
-}
-
-#refresh-leaderboard-button {
-    background: #2a2a2a;
-    color: #e0e0e0;
-    border: tall #777777;
-}
-
-#refresh-leaderboard-button:hover {
-    background: #3a3a3a;
-    color: white;
-    border: tall #aaaaaa;
-}
-
-#leaderboard {
-    color: #cfcfcf;
-    border: round #555555;
-    padding: 1;
     margin-top: 1;
-}
-
-
-#server-status-label {
-    width: 100%;
-    height: 1;
-    color: #cfcfcf;
-    text-align: right;
-    margin-bottom: 0;
-}
-
-#leaderboard-period-row {
-    height: auto;
-    align: center middle;
-    margin-bottom: 1;
-}
-
-#leaderboard-today-button,
-#leaderboard-week-button,
-#leaderboard-all-button {
-    width: 14;
-    height: 1;
-    margin: 0 1;
-    background: transparent;
-    color: #b8b8b8;
-    border: none;
-    content-align: center middle;
-}
-
-#leaderboard-today-button:hover,
-#leaderboard-week-button:hover,
-#leaderboard-all-button:hover {
-    background: #222222;
-    color: white;
-    border-bottom: solid #888888;
 }
 
