@@ -326,6 +326,7 @@ class StudyStreakApp(App):
     focus_minutes = 0
     logged_in = False
     temp_message_versions = {}
+    leaderboard_period = "all"
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -422,6 +423,12 @@ class StudyStreakApp(App):
 
                 with TabPane("Leaderboard", id="leaderboard-tab"):
                     yield Static("Server leaderboard", id="leaderboard-title")
+
+                    with Horizontal(id="leaderboard-period-row"):
+                        yield Button("Today", id="leaderboard-today-button")
+                        yield Button("This week", id="leaderboard-week-button")
+                        yield Button("All time", id="leaderboard-all-button")
+
                     yield Button("Refresh Leaderboard", id="refresh-leaderboard-button")
                     yield Static("", id="leaderboard")
 
@@ -880,7 +887,7 @@ class StudyStreakApp(App):
         leaderboard = self.query_one("#leaderboard", Static)
 
         try:
-            rows = get_leaderboard()
+            rows = get_leaderboard(self.leaderboard_period)
         except ValueError:
             leaderboard.update("[red]Could not load leaderboard.[/red]")
             return
@@ -889,7 +896,13 @@ class StudyStreakApp(App):
             leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
             return
         
-        lines = ["[bold]Leaderboard[/bold]"]
+        period_titles = {
+            "today": "Today",
+            "week": "This week",
+            "all": "All Time",
+        }
+
+        lines = [f"[bold]{period_titles[self.leaderboard_period]} Leaderboard[/bold]"]
 
         for index, row in enumerate(rows, start=1):
             lines.append(
@@ -1298,6 +1311,24 @@ class StudyStreakApp(App):
                 return
  
             self.start_focus_session(str(subject), minutes)
+            return
+
+        if event.button.id == "leaderboard-today-button":
+            #show today's leaderboard
+            self.leaderboard_period = "today"
+            self.refresh_leaderboard()
+            return
+        
+        if event.button.id == "leaderboard-week-button":
+            #show weekly leaderboard 
+            self.leaderboard_period = "week"
+            self.refresh_leaderboard()
+            return
+        
+        if event.button.id == "leaderboard-all-button":
+            #show all-time leaderboard
+            self.leaderboard_period = "all"
+            self.refresh_leaderboard()
             return
 
         if event.button.id == "refresh-leaderboard-button":

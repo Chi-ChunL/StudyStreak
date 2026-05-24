@@ -658,3 +658,29 @@ TabPane {
     margin-bottom: 0;
 }
 
+#leaderboard-period-row {
+    height: auto;
+    align: center middle;
+    margin-bottom: 1;
+}
+
+#leaderboard-today-button,
+#leaderboard-week-button,
+#leaderboard-all-button {
+    width: 14;
+    height: 1;
+    margin: 0 1;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    content-align: center middle;
+}
+
+#leaderboard-today-button:hover,
+#leaderboard-week-button:hover,
+#leaderboard-all-button:hover {
+    background: #222222;
+    color: white;
+    border-bottom: solid #888888;
+}
+

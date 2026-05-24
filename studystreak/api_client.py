@@ -46,10 +46,11 @@ def upload_focus_session(token: str, subject: str, minutes: int, website: str | 
         raise ValueError("Could not upload focus session")
     
 
-def get_leaderboard() -> list[dict]:
+def get_leaderboard(period="all") -> list[dict]:
     #get server leaderboard
     response = requests.get(
         f"{BASE_URL}/leaderboard",
+        params={"period": period},
         timeout=10,
     )
 

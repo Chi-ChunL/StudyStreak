@@ -2,6 +2,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+
 
 from backend.auth import create_access_token, hash_password, verify_password, get_current_user
 from backend.database import Base, engine, get_db
@@ -110,16 +112,37 @@ def create_focus_session(
 
 
 @app.get("/leaderboard", response_model=list[LeaderboardEntry])
-def leaderboard(db: Session = Depends(get_db)):
+def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
     #get leaderboard by focus minutes
-
-    results = (
+    query = (
         db.query(
             User.display_name,
             func.sum(FocusSession.minutes).label("total_minutes"),
         )
         .join(FocusSession)
         .filter(FocusSession.completed.is_(True))
+    )
+
+    now = datetime.utcnow()
+
+    if period == "today":
+        start_time = datetime(now.year, now.month, now.day)
+        query = query.filter(FocusSession.created_at >= start_time)
+    
+    elif period == "week":
+        start_time = now - timedelta(days=now.weekday())
+        start_time = datetime(start_time.year, start_time.month, start_time.day)
+        query = query.filter(FocusSession.created_at >= start_time)
+    
+    elif period == "all":
+        pass
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid Leaderboard period.")
+    
+
+    results = (
+        query
         .group_by(User.id)
         .order_by(func.sum(FocusSession.minutes).desc())
         .limit(10)
