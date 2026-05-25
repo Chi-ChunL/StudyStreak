@@ -1,9 +1,13 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-
+import os
+from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from backend.auth import create_access_token, hash_password, verify_password, get_current_user
 from backend.database import Base, engine, get_db
@@ -16,10 +20,22 @@ from backend.schemas import(
     UserLogin,
 )
 
-
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="StudyStreak Backend")
+load_dotenv()
+
+IS_PRODUCTION = os.getenv("STUDYSTREAK_ENV") == "production"
+
+limiter = Limiter(key_func=get_remote_address)
+
+app = FastAPI(title="StudyStreak Backend",
+              focs_url=None if IS_PRODUCTION else "/docs",
+              redoc_url=None if IS_PRODUCTION else "/redoc",
+              )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 @app.get("/")
 def root():
@@ -28,7 +44,12 @@ def root():
 
 
 @app.post("/signup")
-def signup(user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def signup(
+    request: Request,
+    user_data: UserCreate,
+    db: Session = Depends(get_db),
+):
     #create server account
     username = user_data.username.strip().lower()
 
@@ -51,7 +72,12 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     return {"message": "Account created."}
 
 @app.post("/login", response_model=TokenResponse)
-def login(login_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(
+    request: Request,
+    login_data: UserLogin,
+    db: Session = Depends(get_db),
+):
     #login server account
     username = login_data.username.strip().lower()
 
@@ -68,7 +94,9 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token)
 
 @app.post("/token", response_model=TokenResponse)
+@limiter.limit("10/minute")
 def token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -88,8 +116,10 @@ def token(
     return TokenResponse(access_token=token)
 
 @app.post("/focus-sessions")
+@limiter.limit("20/minute")
 def create_focus_session(
-    session_data: FocusSessionCreate, 
+    request: Request,
+    session_data: FocusSessionCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -156,3 +186,7 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         )
         for result in results
     ]
+
+
+    
+

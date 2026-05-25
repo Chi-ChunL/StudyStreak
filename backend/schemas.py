@@ -10,7 +10,7 @@ class UserLogin(BaseModel):
     #user login data
     username: str = Field(min_length=3, max_length=24)
     password: str = Field(min_length=8, max_length=128)
-    
+
 class TokenResponse(BaseModel):
     #login response
     access_token: str
@@ -19,7 +19,7 @@ class TokenResponse(BaseModel):
 class FocusSessionCreate(BaseModel):
     #focus session upload data
     subject: str = Field(min_length=1, max_length=50)
-    minutes: int = Field(gt=0, le=600)
+    minutes: int = Field(gt=0, le=180)
     website: str | None = None
     completed: bool = True
     source: str = "focus_cli"
