@@ -127,6 +127,9 @@ def sync_profile_data(data):
     token = get_server_token()
 
     if token is None:
+        current_data = get_session_data()
+        current_data["sync"]["last_sync_error"] = "Not logged in to server."
+        save_session_data(current_data)
         return
 
     try:
@@ -142,8 +145,10 @@ def sync_profile_data(data):
 
         if current_sync.get("last_local_update") == data["sync"]["last_local_update"]:
             current_data["sync"]["last_cloud_sync"] = synced_at
+            current_data["sync"]["last_sync_error"] = None
             save_session_data(current_data)
 
-    except (RuntimeError, ValueError):
-        pass
-
+    except (RuntimeError, ValueError) as error:
+        current_data = get_session_data()
+        current_data["sync"]["last_sync_error"] = str(error)
+        save_session_data(current_data)

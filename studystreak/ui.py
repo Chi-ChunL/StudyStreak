@@ -774,6 +774,11 @@ class StudyStreakApp(App):
 
         last_local_update = sync_data.get("last_local_update")
         last_cloud_sync = sync_data.get("last_cloud_sync")
+        last_sync_error = sync_data.get("last_sync_error")
+
+        if last_sync_error is not None:
+            sync_status_label.update("[red]Sync: Failed[/red]")
+            return
 
         if last_cloud_sync is None:
             sync_status_label.update("[yellow]Sync: Not synced yet[/yellow]")
