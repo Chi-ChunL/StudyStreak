@@ -765,7 +765,7 @@ class StudyStreakApp(App):
         timetable_grid.update(get_timetable_grid(data))
 
         self.update_sync_status()
-        
+
     def update_sync_status(self):
         sync_status_label = self.query_one("#sync-status-label", Static)
 
@@ -1141,6 +1141,7 @@ class StudyStreakApp(App):
         self.logged_in = True
         self.update_server_status()
         self.update_sync_status()
+        self.set_interval(2, self.update_sync_status)
         self.update_dashboard()
         self.refresh_leaderboard()
 
