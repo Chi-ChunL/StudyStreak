@@ -684,6 +684,32 @@ TabPane {
     margin-bottom: 1;
 }
 
+#timetable-top-row {
+    height: auto;
+    align: center middle;
+    margin-bottom: 1;
+}
+
+#show-timetable-form-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#show-timetable-form-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#timetable-form-panel {
+    width: 100%;
+    height: auto;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
 #timetable-subject-select,
 #timetable-day-select,
 #timetable-start-input,
@@ -709,6 +735,18 @@ TabPane {
     border: tall #aaaaaa;
 }
 
+#hide-timetable-form-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#hide-timetable-form-button:hover {
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
+}
+
 #timetable-message {
     margin-top: 1;
     text-align: center;
@@ -716,11 +754,10 @@ TabPane {
 }
 
 #today-timetable,
-#full-timetable {
+#timetable-grid {
     color: #cfcfcf;
     border: round #555555;
     padding: 1;
     margin-top: 1;
     margin-bottom: 1;
 }
-

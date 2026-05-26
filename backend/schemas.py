@@ -28,3 +28,12 @@ class LeaderboardEntry(BaseModel):
     #leaderboard row
     display_name: str
     total_minutes: int
+
+class ProfileDataUpdate(BaseModel):
+    #encrypted profile upload
+    encrypted_profile_data: str = Field(min_length=1)
+
+class ProfileDataResponse(BaseModel):
+    #encrypted profile download
+    encrypted_profile_data: str | None = None
+

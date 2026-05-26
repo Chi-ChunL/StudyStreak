@@ -1,5 +1,6 @@
 import webbrowser
 from datetime import date, timedelta, datetime
+from functools import partial
  
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -17,7 +18,8 @@ from textual.widgets import (
 )
  
 from studystreak.storage import load_data, save_data
-from studystreak.accounts import create_account, login_account, logout_account
+from studystreak.accounts import create_account, list_accounts, login_account, logout_account
+from studystreak.accounts import normalise_username, validate_password, validate_username
 from studystreak.session import set_session, clear_session, get_session_username, set_server_token, get_server_token
 from studystreak.auth_cache import (
     save_remembered_login,
@@ -30,8 +32,10 @@ from studystreak.api_client import (
     signup_to_server,
     upload_focus_session, 
     get_leaderboard,
-    check_server_status
+    check_server_status,
+    get_profile_data,
 )
+from studystreak.profile_sync import decrypt_profile_data
 
 
 
@@ -510,32 +514,39 @@ class StudyStreakApp(App):
                     yield Static("", id="manage-message")
 
                 with TabPane("Timetable", id="timetable-tab"):
-                    yield Static("Plan your study sessions.", id="timetable-title")
+                    yield Static("Weekly study timetable", id="timetable-title")
 
-                    yield Select(
-                        options=[],
-                        id="timetable-subject-select",
-                        prompt="Choose a subject",
-                    )
+                    with Horizontal(id="timetable-top-row"):
+                        yield Button("Add Session", id="show-timetable-form-button")
+                    
+                    with Vertical(id="timetable-form-panel"):
 
-                    yield Select(
-                        options=get_day_options(),
-                        id="timetable-day-select",
-                        prompt="Choose a day",
-                    )
+                        yield Select(
+                            options=[],
+                            id="timetable-subject-select",
+                            prompt="Choose a subject",
+                        )
+                    
 
-                    yield Input(
-                        placeholder="Start time, e.g. 17:00",
-                        id="timetable-start-input",
-                    )
+                        yield Select(
+                            options=get_day_options(),
+                            id="timetable-day-select",
+                            prompt="Choose a day",
+                        )
 
-                    yield Input(
-                        placeholder="Duration in minutes, e.g. 60",
-                        id="timetable-minutes-input",
-                    )
+                        yield Input(
+                            placeholder="Start time, e.g. 17:00",
+                            id="timetable-start-input",
+                        )
 
-                    with Horizontal(id="timetable-button-row"):
-                        yield Button("Add Timetable Session", id="add-timetable-button")
+                        yield Input(
+                            placeholder="Duration in minutes, e.g. 60",
+                            id="timetable-minutes-input",
+                        )
+
+                        with Horizontal(id="timetable-button-row"):
+                            yield Button("Save Session", id="add-timetable-button")
+                            yield Button("Cancel", id="hide-timetable-form-button")
 
                     yield Static("", id="timetable-message")
                     yield Static("", id="today-timetable")
@@ -685,6 +696,9 @@ class StudyStreakApp(App):
 
         subject_edit_panel.display = False
         subject_delete_panel.display = False
+
+        timetable_form_panel = self.query_one("#timetable-form-panel")
+        timetable_form_panel.display = False
 
         self.hide_all_temp_messages()
         self.try_remembered_login()
@@ -913,17 +927,16 @@ class StudyStreakApp(App):
         server_token = get_server_token()
 
         if server_token is not None:
-            try:
-                upload_focus_session(
-                    token=server_token,
-                    subject=str(self.focus_subject).lower(),
-                    minutes=self.focus_minutes,
-                    website=None,
-                )
-                self.refresh_leaderboard()
-            except ValueError:
-                self.show_temp_message("#focus-message", "[yellow]Focus saved locally, but server upload failed.[/yellow]")
-
+            self.run_worker(
+                partial(
+                    self.upload_focus_session_in_background,
+                    server_token,
+                    str(self.focus_subject).lower(),
+                    self.focus_minutes,
+                ),
+                thread=True,
+                group="focus-upload",
+            )
 
         self.update_dashboard()
  
@@ -945,6 +958,25 @@ class StudyStreakApp(App):
  
         if not already_studied_today:
             self.show_streak_effect(streak_count)
+
+    def upload_focus_session_in_background(self, token, subject, minutes):
+        #avoid freezing the UI when the server is slow or offline
+        try:
+            upload_focus_session(
+                token=token,
+                subject=subject,
+                minutes=minutes,
+                website=None,
+            )
+        except ValueError:
+            self.call_from_thread(
+                self.show_temp_message,
+                "#focus-message",
+                "[yellow]Focus saved locally, but server upload failed.[/yellow]",
+            )
+            return
+
+        self.call_from_thread(self.refresh_leaderboard)
  
     def cancel_focus_session(self):
         focus_timer = self.query_one("#focus-timer", Static)
@@ -1018,11 +1050,58 @@ class StudyStreakApp(App):
     def update_server_status(self):
         #update server connection label
         server_status_label = self.query_one("#server-status-label", Static)
+        server_status_label.update("[yellow]Server: Checking...[/yellow]")
 
-        if check_server_status():
+        self.run_worker(
+            self.check_server_status_in_background,
+            thread=True,
+            exclusive=True,
+            group="server-status",
+        )
+
+    def check_server_status_in_background(self):
+        #avoid freezing the UI while waiting for the network
+        server_is_online = check_server_status()
+        self.call_from_thread(self.show_server_status, server_is_online)
+
+    def show_server_status(self, server_is_online):
+        #update server connection label from the main thread
+        server_status_label = self.query_one("#server-status-label", Static)
+
+        if server_is_online:
             server_status_label.update("[green]Server: Connected[/green]")
         else:
             server_status_label.update("[red]Server: Offline[/red]")
+
+    def sync_profile_from_server(self, username, password, token):
+        #download encrypted profile from server
+        try:
+            encrypted_profile_data = get_profile_data(token)
+        
+        except ValueError:
+            return
+        
+        if encrypted_profile_data is None:
+            data = load_data()
+            save_data(data)
+            return
+        
+        try:
+            cloud_data = decrypt_profile_data(
+                encrypted_profile_data,
+                username,
+                password,
+            )
+
+        except Exception:
+            self.show_temp_message(
+                "#login-message",
+                "[red]Could not decrypt cloud profile",
+            )
+            return
+        
+        save_data(cloud_data)
+        set_session(username, password, cloud_data)
 
     def show_main_app(self):
         #show main app after login
@@ -1045,13 +1124,32 @@ class StudyStreakApp(App):
     def refresh_leaderboard(self):
         #refresh server leaderboard
         leaderboard = self.query_one("#leaderboard", Static)
+        leaderboard.update("[yellow]Loading leaderboard...[/yellow]")
 
+        self.run_worker(
+            self.load_leaderboard_in_background,
+            thread=True,
+            exclusive=True,
+            group="leaderboard",
+        )
+
+    def load_leaderboard_in_background(self):
+        #avoid freezing the UI while waiting for the network
         try:
             rows = get_leaderboard(self.leaderboard_period)
         except ValueError:
-            leaderboard.update("[red]Could not load leaderboard.[/red]")
+            self.call_from_thread(self.show_leaderboard_error)
             return
-        
+
+        self.call_from_thread(self.show_leaderboard_rows, rows, self.leaderboard_period)
+
+    def show_leaderboard_error(self):
+        leaderboard = self.query_one("#leaderboard", Static)
+        leaderboard.update("[red]Could not load leaderboard.[/red]")
+
+    def show_leaderboard_rows(self, rows, period):
+        leaderboard = self.query_one("#leaderboard", Static)
+
         if len(rows) == 0:
             leaderboard.update("[yellow]No leaderboard data yet.[/yellow]")
             return
@@ -1062,7 +1160,7 @@ class StudyStreakApp(App):
             "all": "All Time",
         }
 
-        lines = [f"[bold]{period_titles[self.leaderboard_period]} Leaderboard[/bold]"]
+        lines = [f"[bold]{period_titles[period]} Leaderboard[/bold]"]
 
         for index, row in enumerate(rows, start=1):
             lines.append(
@@ -1097,7 +1195,6 @@ class StudyStreakApp(App):
         if event.button.id == "login-button":
             username_input = self.query_one("#login-username-input", Input)
             password_input = self.query_one("#login-password-input", Input)
-            login_message = self.query_one("#login-message", Static)
 
             username = username_input.value.strip()
             password = password_input.value
@@ -1117,20 +1214,50 @@ class StudyStreakApp(App):
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
+                    self.sync_profile_from_server(username, password, server_token)
+
+                except ValueError as error:
+                    self.show_temp_message(
+                        "#login-message",
+                        f"[yellow]Local login worked, but server login failed: {error}[/yellow]"
+                        )
+                    
+            except ValueError:
+
+                try:
+                    server_token = login_to_server(username, password)
+                    set_server_token(server_token)
+                    self.sync_profile_from_server(username, password, server_token)
+                except ValueError as error:
+                    self.show_temp_message(
+                        "#login-message",
+                        f"[red]Username or password is incorrect. Server said: {error}[/red]",
+                    )
+                    return
                 
+                try:
+                    create_account(username=username, password=password)
                 except ValueError:
-                    self.show_temp_message("#login-message", "[yellow]Local login worked, but server login failed.[/yellow]")
+                    self.show_temp_message(
+                        "#login-message",
+                        "[red]Could not import server account locally.[/red]",
+                    )
+                    return
+                private_data = login_account(username, password)
+                set_session(username, password, private_data)
+                set_server_token(server_token)
 
-                remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
+                self.show_temp_message(
+                    "#login-message",
+                    "[yellow]Server account imported locally.[/yellow]",
+                )
 
-                if remember_checkbox.value:
-                    save_remembered_login(username, password)
-                else:
-                    clear_remembered_login()
+            remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
-            except ValueError as error:
-                self.show_temp_message("#login-message", f"[red]{error}[/red]")
-                return
+            if remember_checkbox.value:
+                save_remembered_login(username, password)
+            else:
+                clear_remembered_login()
             
             password_input.value = ""
             self.show_temp_message("#login-message", "[green]Login successful.[/green]")
@@ -1154,13 +1281,16 @@ class StudyStreakApp(App):
                 return
 
             try:
-                create_account(username=username, password=password)
-                
-                try:
-                    signup_to_server(username, password)
-                except ValueError:
-                    self.show_temp_message("#login-message", "[yellow]Local account created, but server signup failed.[/yellow]")
+                username = normalise_username(username)
+                validate_username(username)
+                validate_password(password)
+
+                if username in list_accounts():
+                    self.show_temp_message("#login-message", "[red]That username already exists locally.[/red]")
                     return
+
+                signup_to_server(username, password)
+                create_account(username=username, password=password)
 
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
@@ -1168,8 +1298,11 @@ class StudyStreakApp(App):
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
-                except ValueError:
-                    self.show_temp_message("#login-message", "[yellow]Local login worked, but server login failed.[/yellow]")
+                except ValueError as error:
+                    self.show_temp_message(
+                        "#login-message",
+                        f"[yellow]Account created locally, but server login failed: {error}[/yellow]",
+                    )
 
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
@@ -1443,6 +1576,18 @@ class StudyStreakApp(App):
  
             self.show_temp_message("#focus-message", f"[green]Opened study website: {website}[/green]")
             return
+        
+        if event.button.id == "show-timetable-form-button":
+            #show timetable form
+            timetable_form_panel = self.query_one("#timetable-form-panel")
+            timetable_form_panel.display = True
+            return
+        
+        if event.button.id == "hide-timetable-form-button":
+            #hide timetable form
+            timetable_form_panel = self.query_one("#timetable-form-panel")
+            timetable_form_panel.display = False
+            return
 
         if event.button.id == "add-timetable-button":
             #add timetable session
@@ -1522,6 +1667,9 @@ class StudyStreakApp(App):
                 "#timetable-message",
                 f"[green]Added {subject} on {day} at {start_time}.[/green]",
             )
+
+            timetable_form_panel = self.query_one("#timetable-form-panel")
+            timetable_form_panel.display = False
             return
         
 

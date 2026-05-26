@@ -1,8 +1,21 @@
 import json
+from copy import deepcopy
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
-from studystreak.session import is_logged_in, get_session_data, save_session_data
+from studystreak.session import (
+    is_logged_in,
+    get_session_data,
+    save_session_data,
+    get_session_username,
+    get_session_password,
+    get_server_token,
+)
+
+from studystreak.profile_sync import encrypt_profile_data
+from studystreak.api_client import upload_profile_data
+
 
 DATA_FILE = Path("study_data.json")
 
@@ -70,6 +83,30 @@ def save_data(data):
 
     if is_logged_in():
         save_session_data(data)
+        sync_profile_data_in_background(data)
         return
     
     save_legacy_data(data)
+
+def sync_profile_data_in_background(data):
+    #keep local saves fast even when the server is slow or offline
+    snapshot = deepcopy(data)
+    thread = Thread(target=sync_profile_data, args=(snapshot,), daemon=True)
+    thread.start()
+
+
+def sync_profile_data(data):
+    #upload encrypted profile data to the server
+    token = get_server_token()
+
+    if token is None:
+        return
+
+    try:
+        username = get_session_username()
+        password = get_session_password()
+
+        encrypted_profile_data = encrypt_profile_data(data, username, password)
+        upload_profile_data(token, encrypted_profile_data)
+    except (RuntimeError, ValueError):
+        pass

@@ -15,6 +15,8 @@ from backend.models import FocusSession, User
 from backend.schemas import(
     FocusSessionCreate,
     LeaderboardEntry,
+    ProfileDataResponse,
+    ProfileDataUpdate,
     TokenResponse,
     UserCreate,
     UserLogin,
@@ -187,6 +189,24 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         for result in results
     ]
 
+@app.get("/profile-data", response_model=ProfileDataResponse)
+def get_profile_data(
+    current_user: User = Depends(get_current_user),
+):
+    #get encrypted profile data
+    return ProfileDataResponse(
+        encrypted_profile_data=current_user.encrypted_profile_data
+    )
 
-    
+@app.put("/profile-data")
+def update_profile_data(
+    profile_data: ProfileDataUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    #save encrypted profile data
+    current_user.encrypted_profile_data = profile_data.encrypted_profile_data
+    db.commit()
+
+    return {"message": "Profile data saved"}
 
