@@ -41,7 +41,7 @@ IS_PRODUCTION = os.getenv("STUDYSTREAK_ENV") == "production"
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="StudyStreak Backend",
-              focs_url=None if IS_PRODUCTION else "/docs",
+              docs_url=None if IS_PRODUCTION else "/docs",
               redoc_url=None if IS_PRODUCTION else "/redoc",
               )
 
