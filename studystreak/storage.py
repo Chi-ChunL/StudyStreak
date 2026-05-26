@@ -135,8 +135,15 @@ def sync_profile_data(data):
 
         encrypted_profile_data = encrypt_profile_data(data, username, password)
         upload_profile_data(token, encrypted_profile_data)
-        data["sync"]["last_cloud_sync"] == get_utc_now_text()
-        
+
+        synced_at = get_utc_now_text()
+        current_data = get_session_data()
+        current_sync = current_data.get("sync", {})
+
+        if current_sync.get("last_local_update") == data["sync"]["last_local_update"]:
+            current_data["sync"]["last_cloud_sync"] = synced_at
+            save_session_data(current_data)
+
     except (RuntimeError, ValueError):
         pass
 
