@@ -466,6 +466,7 @@ class StudyStreakApp(App):
 
         with Container(id="main-container"):
             yield Static("", id="server-status-label")
+            yield Static("", id="sync-status-label")
             yield Static("StudyStreak CLI", id="title")
             yield Static("Track your study streak and log your progress.", id="subtitle")
 
@@ -762,6 +763,30 @@ class StudyStreakApp(App):
 
         today_timetable.update(get_today_timetable_display(data))
         timetable_grid.update(get_timetable_grid(data))
+
+        self.update_sync_status()
+        
+    def update_sync_status(self):
+        sync_status_label = self.query_one("#sync-status-label", Static)
+
+        data = load_data()
+        sync_data = data.get("sync", {})
+
+        last_local_update = sync_data.get("last_local_update")
+        last_cloud_sync = sync_data.get("last_cloud_sync")
+
+        if last_cloud_sync is None:
+            sync_status_label.update("[yellow]Sync: Not synced yet[/yellow]")
+            return
+        
+        if last_local_update is None:
+            sync_status_label.update("[green]Sync: Synced[/green]")
+            return
+        
+        if last_cloud_sync >= last_local_update:
+            sync_status_label.update("[green]Sync: Synced[/green]")
+        else:
+            sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
 
     def show_temp_message(self, widget_id, text, seconds=5):
         #show message then hide it
@@ -1115,6 +1140,7 @@ class StudyStreakApp(App):
 
         self.logged_in = True
         self.update_server_status()
+        self.update_sync_status()
         self.update_dashboard()
         self.refresh_leaderboard()
 

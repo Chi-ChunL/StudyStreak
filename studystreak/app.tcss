@@ -36,6 +36,7 @@ Screen {
 
 /* #------------------server status------------------- */
 
+#sync-status-label,
 #server-status-label {
     width: 100%;
     height: 1;
@@ -44,6 +45,9 @@ Screen {
     margin-bottom: 0;
 }
 
+#sync-status-label {
+    margin-bottom: 1;
+}
 
 /* #------------------account row------------------- */
 

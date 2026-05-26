@@ -3,6 +3,8 @@ from copy import deepcopy
 from pathlib import Path
 from threading import Thread
 from typing import Any
+from uuid import uuid4
+from datetime import datetime, timezone
 
 from studystreak.session import (
     is_logged_in,
@@ -25,8 +27,16 @@ def get_default_data():
         "sessions": [],
         "weekly_goal": 300,
         "subjects": [],
-        "subject_websites": {}
+        "subject_websites": {},
+        "sync": {
+            "device_id": None,
+            "last_local_update": None,
+            "last_cloud_sync": None,
+        },
     }
+
+def get_utc_now_text():
+    return datetime.now(timezone.utc).isoformat()
 
 def repair_data(data):
     #repair missing data keys
@@ -44,6 +54,21 @@ def repair_data(data):
 
     if "timetable" not in data:
         data["timetable"] = []
+
+    if "sync" not in data:
+        data["sync"] = {}
+    
+    if "device_id" not in data["sync"]:
+        data["sync"]["device_id"] = None
+    
+    if "last_local_update" not in data["sync"]:
+        data["sync"]["last_local_update"] = None
+    
+    if "last_cloud_sync" not in data["sync"]:
+        data["sync"]["last_cloud_sync"] = None
+
+    if data["sync"]["device_id"] is None:
+        data["sync"]["device_id"] = str(uuid4())
 
     return data
 
@@ -81,6 +106,8 @@ def save_data(data):
     #save active study data
     data = repair_data(data)
 
+    data["sync"]["last_local_update"] = get_utc_now_text()
+
     if is_logged_in():
         save_session_data(data)
         sync_profile_data_in_background(data)
@@ -108,5 +135,8 @@ def sync_profile_data(data):
 
         encrypted_profile_data = encrypt_profile_data(data, username, password)
         upload_profile_data(token, encrypted_profile_data)
+        data["sync"]["last_cloud_sync"] == get_utc_now_text()
+        
     except (RuntimeError, ValueError):
         pass
+
