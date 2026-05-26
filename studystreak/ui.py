@@ -215,7 +215,122 @@ def get_subject_options(data):
  
     return options
  
- 
+
+def get_day_options():
+    #get timetable day options
+    return [
+        ("Mon", "Mon"),
+        ("Tue", "Tue"),
+        ("Wed", "Wed"),
+        ("Thu", "Thu"),
+        ("Fri", "Fri"),
+        ("Sat", "Sat"),
+        ("Sun", "Sun"),
+    ]
+
+
+def normalise_timetable_day(day):
+    #turn full day names into short names
+    day_map = {
+        "Monday": "Mon",
+        "Tuesday": "Tue",
+        "Wednesday": "Wed",
+        "Thursday": "Thu",
+        "Friday": "Fri",
+        "Saturday": "Sat",
+        "Sunday": "Sun",
+    }
+
+    return day_map.get(day, day)
+
+
+def get_today_short_name():
+    #get today's short day name
+    return date.today().strftime("%a")
+
+
+def get_timetable_grid(data):
+    #show timetable as weekly grid
+    timetable = data.get("timetable", [])
+
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    start_hour = 8
+    end_hour = 22
+
+    cell_width = 12
+    time_width = 7
+
+    timetable_slots = {}
+
+    for item in timetable:
+        day = normalise_timetable_day(item["day"])
+        start_time = item["start_time"]
+        subject = item["subject"]
+
+        hour = int(start_time[:2])
+        key = (day, hour)
+
+        if key not in timetable_slots:
+            timetable_slots[key] = []
+
+        timetable_slots[key].append(subject)
+
+    lines = ["[bold]Weekly Timetable[/bold]", ""]
+
+    header = "Time".ljust(time_width)
+
+    for day in days:
+        header += day.center(cell_width)
+
+    lines.append(header)
+    lines.append("-" * (time_width + cell_width * len(days)))
+
+    for hour in range(start_hour, end_hour + 1):
+        row = f"{hour:02}:00".ljust(time_width)
+
+        for day in days:
+            sessions = timetable_slots.get((day, hour), [])
+
+            if len(sessions) == 0:
+                cell_text = ""
+            else:
+                cell_text = ", ".join(sessions)
+                cell_text = cell_text[:cell_width - 1]
+
+            row += cell_text.center(cell_width)
+
+        lines.append(row)
+
+    return "\n".join(lines)
+
+
+def get_today_timetable_display(data):
+    #show today's timetable as list
+    timetable = data.get("timetable", [])
+    today_name = get_today_short_name()
+
+    today_items = [
+        item for item in timetable
+        if normalise_timetable_day(item["day"]) == today_name
+    ]
+
+    if len(today_items) == 0:
+        return f"No timetable sessions planned for {today_name}."
+
+    today_items.sort(key=lambda item: item["start_time"])
+
+    lines = [f"[bold]{today_name} Sessions[/bold]"]
+
+    for item in today_items:
+        subject = item["subject"]
+        start_time = item["start_time"]
+        minutes = item["minutes"]
+
+        lines.append(f"{start_time} - {subject} - {minutes} minutes")
+
+    return "\n".join(lines)
+
+
 def get_subject_stats(data):
     sessions = data["sessions"]
  
@@ -393,7 +508,39 @@ class StudyStreakApp(App):
                         yield Button("Delete Selected", id="delete-selected-button")
  
                     yield Static("", id="manage-message")
- 
+
+                with TabPane("Timetable", id="timetable-tab"):
+                    yield Static("Plan your study sessions.", id="timetable-title")
+
+                    yield Select(
+                        options=[],
+                        id="timetable-subject-select",
+                        prompt="Choose a subject",
+                    )
+
+                    yield Select(
+                        options=get_day_options(),
+                        id="timetable-day-select",
+                        prompt="Choose a day",
+                    )
+
+                    yield Input(
+                        placeholder="Start time, e.g. 17:00",
+                        id="timetable-start-input",
+                    )
+
+                    yield Input(
+                        placeholder="Duration in minutes, e.g. 60",
+                        id="timetable-minutes-input",
+                    )
+
+                    with Horizontal(id="timetable-button-row"):
+                        yield Button("Add Timetable Session", id="add-timetable-button")
+
+                    yield Static("", id="timetable-message")
+                    yield Static("", id="today-timetable")
+                    yield Static("", id="timetable-grid")
+
                 with TabPane("Focus Mode", id="focus-tab"):
                     yield Static("Start a focused study session.", id="focus-title")
  
@@ -429,7 +576,9 @@ class StudyStreakApp(App):
                         yield Button("This week", id="leaderboard-week-button")
                         yield Button("All time", id="leaderboard-all-button")
 
-                    yield Button("Refresh Leaderboard", id="refresh-leaderboard-button")
+                    with Horizontal(id="leaderboard-refresh-row"):
+                        yield Button("Refresh Leaderboard", id="refresh-leaderboard-button")
+
                     yield Static("", id="leaderboard")
 
                 with TabPane("Settings", id="settings-tab"):
@@ -550,7 +699,8 @@ class StudyStreakApp(App):
         weekly_goal = data["weekly_goal"]
         weekly_progress_bar = create_progress_bar(weekly_minutes, weekly_goal)
         weekly_goal_status = get_weekly_goal_status(weekly_minutes, weekly_goal)
- 
+
+
         dashboard = self.query_one("#dashboard", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
         subject_stats = self.query_one("#subject-stats", Static)
@@ -560,7 +710,10 @@ class StudyStreakApp(App):
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
         delete_subject_select = self.query_one("#delete-subject-select", Select)
         edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
- 
+        timetable_subject_select = self.query_one("#timetable-subject-select", Select)
+        today_timetable = self.query_one("#today-timetable", Static)
+        timetable_grid = self.query_one("#timetable-grid", Static)
+
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
         dashboard.update(
@@ -589,7 +742,13 @@ class StudyStreakApp(App):
  
         edit_website_subject_select.set_options(get_subject_options(data))
         edit_website_subject_select.clear()
- 
+
+        timetable_subject_select.set_options(get_subject_options(data))
+        timetable_subject_select.clear()
+
+        today_timetable.update(get_today_timetable_display(data))
+        timetable_grid.update(get_timetable_grid(data))
+
     def show_temp_message(self, widget_id, text, seconds=5):
         #show message then hide it
         widget = self.query_one(widget_id, Static)
@@ -624,6 +783,7 @@ class StudyStreakApp(App):
             "#focus-timer",
             "#global-message",
             "#login-message",
+            "#timetable-message",
         ]
 
         for widget_id in temp_widget_ids:
@@ -1283,7 +1443,88 @@ class StudyStreakApp(App):
  
             self.show_temp_message("#focus-message", f"[green]Opened study website: {website}[/green]")
             return
- 
+
+        if event.button.id == "add-timetable-button":
+            #add timetable session
+            subject_select = self.query_one("#timetable-subject-select", Select)
+            day_select = self.query_one("#timetable-day-select", Select)
+            start_input = self.query_one("#timetable-start-input", Input)
+            minutes_input = self.query_one("#timetable-minutes-input", Input)
+
+            subject = subject_select.value
+            day = day_select.value
+            start_time = start_input.value.strip()
+            minutes_text = minutes_input.value.strip()
+
+            if is_blank_select_value(subject):
+                self.show_temp_message("#timetable-message", "[red]Please choose a subject.[/red]")
+                return
+
+            if is_blank_select_value(day):
+                self.show_temp_message("#timetable-message", "[red]Please choose a day.[/red]")
+                return
+
+            if start_time == "":
+                self.show_temp_message("#timetable-message", "[red]Please enter a start time.[/red]")
+                return
+
+            if len(start_time) != 5 or start_time[2] != ":":
+                self.show_temp_message("#timetable-message", "[red]Use time format HH:MM.[/red]")
+                return
+            
+            hour_text = start_time[:2]
+            minute_text = start_time[3:]
+
+            if not hour_text.isdigit() or not minute_text.isdigit():
+                self.show_temp_message("#timetable-message", "[red]Start time must be numbers, e.g. 17:00.[/red]")
+                return
+            hour = int(hour_text)
+            minute = int(minute_text)
+
+            if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                self.show_temp_message("#timetable-message", "[red]Please enter a valid time.[/red]")
+                return
+
+            if minutes_text == "":
+                self.show_temp_message("#timetable-message", "[red]Please enter a duration.[/red]")
+                return
+
+            if not minutes_text.isdigit():
+                self.show_temp_message("#timetable-message", "[red]Duration must be a whole number.[/red]")
+                return
+
+            minutes = int(minutes_text)
+
+            if minutes <= 0:
+                self.show_temp_message("#timetable-message", "[red]Duration must be more than 0.[/red]")
+                return
+            
+            data = load_data()
+
+            timetable_item = {
+                "subject": str(subject).lower(),
+                "day": str(day),
+                "start_time": start_time,
+                "minutes": minutes,
+            }
+
+            data["timetable"].append(timetable_item)
+            save_data(data)
+
+            self.update_dashboard()
+
+            subject_select.clear()
+            day_select.clear()
+            start_input.value = ""
+            minutes_input.value = ""
+
+            self.show_temp_message(
+                "#timetable-message",
+                f"[green]Added {subject} on {day} at {start_time}.[/green]",
+            )
+            return
+        
+
         if event.button.id == "start-focus-button":
             focus_subject_select = self.query_one("#focus-subject-select", Select)
             focus_minutes_input = self.query_one("#focus-minutes-input", Input)

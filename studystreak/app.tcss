@@ -675,3 +675,52 @@ TabPane {
     margin-top: 1;
 }
 
+
+/* #------------------timetable------------------- */
+
+#timetable-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#timetable-subject-select,
+#timetable-day-select,
+#timetable-start-input,
+#timetable-minutes-input {
+    margin-bottom: 1;
+}
+
+#timetable-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#add-timetable-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#add-timetable-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#timetable-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+#today-timetable,
+#full-timetable {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+

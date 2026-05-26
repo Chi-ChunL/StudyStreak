@@ -29,6 +29,9 @@ def repair_data(data):
     if "subject_websites" not in data:
         data["subject_websites"] = {}
 
+    if "timetable" not in data:
+        data["timetable"] = []
+
     return data
 
 def load_legacy_data() -> dict[str, Any]:
