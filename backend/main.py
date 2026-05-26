@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import os
@@ -23,6 +23,16 @@ from backend.schemas import(
 )
 
 Base.metadata.create_all(bind=engine)
+
+with engine.connect() as connection:
+    columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
+    column_name = [column[1] for column in columns]
+
+    if "encrypted_profile_data" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN encrypted_profile_data TEXT")
+        )
+        connection.commit()
 
 load_dotenv()
 

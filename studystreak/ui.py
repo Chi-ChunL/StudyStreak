@@ -1079,12 +1079,10 @@ class StudyStreakApp(App):
             encrypted_profile_data = get_profile_data(token)
         
         except ValueError:
-            return
+            return None
         
         if encrypted_profile_data is None:
-            data = load_data()
-            save_data(data)
-            return
+            return None
         
         try:
             cloud_data = decrypt_profile_data(
@@ -1096,12 +1094,11 @@ class StudyStreakApp(App):
         except Exception:
             self.show_temp_message(
                 "#login-message",
-                "[red]Could not decrypt cloud profile",
+                "[red]Could not decrypt cloud profile[/red]",
             )
-            return
+            return None
         
-        save_data(cloud_data)
-        set_session(username, password, cloud_data)
+        return cloud_data
 
     def show_main_app(self):
         #show main app after login
@@ -1192,6 +1189,7 @@ class StudyStreakApp(App):
 
             self.show_temp_message("#login-message", "[yellow]Logged out.[/yellow]")
             return
+        
         if event.button.id == "login-button":
             username_input = self.query_one("#login-username-input", Input)
             password_input = self.query_one("#login-password-input", Input)
@@ -1202,11 +1200,11 @@ class StudyStreakApp(App):
             if username == "":
                 self.show_temp_message("#login-message", "[red]Please enter your username.[/red]")
                 return
-            
+
             if password == "":
                 self.show_temp_message("#login-message", "[red]Please enter your password.[/red]")
                 return
-            
+
             try:
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
@@ -1214,27 +1212,32 @@ class StudyStreakApp(App):
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
-                    self.sync_profile_from_server(username, password, server_token)
 
-                except ValueError as error:
+                    cloud_data = self.sync_profile_from_server(username, password, server_token)
+
+                    if cloud_data is not None:
+                        set_session(username, password, cloud_data)
+                        save_data(cloud_data)
+
+                except ValueError:
                     self.show_temp_message(
                         "#login-message",
-                        f"[yellow]Local login worked, but server login failed: {error}[/yellow]"
-                        )
-                    
-            except ValueError:
+                        "[yellow]Local login worked, but server login failed.[/yellow]",
+                    )
 
+            except ValueError:
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
-                    self.sync_profile_from_server(username, password, server_token)
-                except ValueError as error:
+                    cloud_data = self.sync_profile_from_server(username, password, server_token)
+
+                except ValueError:
                     self.show_temp_message(
                         "#login-message",
-                        f"[red]Username or password is incorrect. Server said: {error}[/red]",
+                        "[red]Username or password is incorrect.[/red]",
                     )
                     return
-                
+
                 try:
                     create_account(username=username, password=password)
                 except ValueError:
@@ -1243,8 +1246,14 @@ class StudyStreakApp(App):
                         "[red]Could not import server account locally.[/red]",
                     )
                     return
+
                 private_data = login_account(username, password)
+
+                if cloud_data is not None:
+                    private_data = cloud_data
+
                 set_session(username, password, private_data)
+                save_data(private_data)
                 set_server_token(server_token)
 
                 self.show_temp_message(
@@ -1258,7 +1267,7 @@ class StudyStreakApp(App):
                 save_remembered_login(username, password)
             else:
                 clear_remembered_login()
-            
+
             password_input.value = ""
             self.show_temp_message("#login-message", "[green]Login successful.[/green]")
             self.show_main_app()
@@ -1298,10 +1307,11 @@ class StudyStreakApp(App):
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
+                    save_data(private_data)
                 except ValueError as error:
                     self.show_temp_message(
                         "#login-message",
-                        f"[yellow]Account created locally, but server login failed: {error}[/yellow]",
+                        f"[yellow]Account created locally, but server login failed.[/yellow]",
                     )
 
                 remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
@@ -1311,7 +1321,7 @@ class StudyStreakApp(App):
                 else:
                     clear_remembered_login()
             except ValueError as error:
-                self.show_temp_message("#login-message", f"[red]{error}[/red]")
+                self.show_temp_message("#login-message", f"[red]Username or Password Incorrect.[/red]")
                 return
 
             password_input.value = ""
