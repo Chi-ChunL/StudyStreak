@@ -32,6 +32,7 @@ def get_default_data():
             "device_id": None,
             "last_local_update": None,
             "last_cloud_sync": None,
+            "last_sync_error": None,
         },
     }
 
@@ -66,6 +67,9 @@ def repair_data(data):
     
     if "last_cloud_sync" not in data["sync"]:
         data["sync"]["last_cloud_sync"] = None
+
+    if "last_sync_error" not in data["sync"]:
+        data["sync"]["last_sync_error"] = None
 
     if data["sync"]["device_id"] is None:
         data["sync"]["device_id"] = str(uuid4())

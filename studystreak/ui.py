@@ -777,7 +777,7 @@ class StudyStreakApp(App):
         last_sync_error = sync_data.get("last_sync_error")
 
         if last_sync_error is not None:
-            sync_status_label.update("[red]Sync: Failed[/red]")
+            sync_status_label.update(f"[red]Sync: Failed - {last_sync_error}[/red]")
             return
 
         if last_cloud_sync is None:
@@ -1075,6 +1075,27 @@ class StudyStreakApp(App):
             clear_remembered_login()
             self.show_temp_message("#login-message", "[red]Saved login expired. Please log in again.[/red]")
             return
+
+        try:
+            server_token = login_to_server(remembered_username, remembered_password)
+            set_server_token(server_token)
+
+            cloud_data = self.sync_profile_from_server(
+                remembered_username,
+                remembered_password,
+                server_token,
+            )
+
+            if cloud_data is not None:
+                set_session(remembered_username, remembered_password, cloud_data)
+                save_data(cloud_data)
+
+        except ValueError:
+            self.show_temp_message(
+                "#login-message",
+                "[yellow]Saved local login worked, but server login failed.[/yellow]",
+            )
+
         self.show_main_app()
 
     def update_server_status(self):
