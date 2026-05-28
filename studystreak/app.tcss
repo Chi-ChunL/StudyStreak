@@ -429,6 +429,7 @@ TabPane {
 }
 
 #settings-weekly-button,
+#settings-sync-button,
 #settings-subjects-button {
     width: 100%;
     height: 1;
@@ -441,6 +442,7 @@ TabPane {
 }
 
 #settings-weekly-button:hover,
+#settings-sync-button:hover,
 #settings-subjects-button:hover {
     background: #222222;
     color: white;
@@ -448,6 +450,7 @@ TabPane {
 }
 
 #weekly-goal-panel,
+#sync-panel,
 #subjects-panel {
     width: 100%;
     height: auto;
@@ -486,6 +489,47 @@ TabPane {
 }
 
 #settings-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
+
+
+/* #------------------sync settings------------------- */
+
+#sync-panel-title {
+    text-align: center;
+    color: #cfcfcf;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#sync-details {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#sync-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#sync-now-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+#sync-now-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#sync-message {
     margin-top: 1;
     text-align: center;
     color: green;

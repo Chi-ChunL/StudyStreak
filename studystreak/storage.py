@@ -111,6 +111,7 @@ def save_data(data):
     data = repair_data(data)
 
     data["sync"]["last_local_update"] = get_utc_now_text()
+    data["sync"]["last_sync_error"] = None
 
     if is_logged_in():
         save_session_data(data)

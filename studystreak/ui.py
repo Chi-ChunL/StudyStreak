@@ -36,7 +36,7 @@ from studystreak.api_client import (
     get_profile_data,
 )
 from studystreak.profile_sync import decrypt_profile_data
-
+from studystreak.notification import play_sound
 
 
 
@@ -390,7 +390,8 @@ class StreakEffectScreen(ModalScreen):
                 "[green]Your first study session today has been logged.[/green]",
                 id="streak-effect-message",
             )
- 
+
+
     def on_mount(self):
         self.set_timer(2.5, self.close_effect)
  
@@ -599,6 +600,7 @@ class StudyStreakApp(App):
                     with Horizontal(id="settings-layout"):
                         with Vertical(id="settings-sidebar"):
                             yield Button("Weekly Goal", id="settings-weekly-button")
+                            yield Button("Sync", id="settings-sync-button")
                             yield Button("Subjects", id="settings-subjects-button")
  
                         with Vertical(id="settings-content"):
@@ -614,6 +616,15 @@ class StudyStreakApp(App):
                                     yield Button("Save Goal", id="save-goal-button")
  
                                 yield Static("", id="settings-message")
+
+                            with Vertical(id="sync-panel"):
+                                yield Static("Cloud sync", id="sync-panel-title")
+                                yield Static("", id="sync-details")
+
+                                with Horizontal(id="sync-button-row"):
+                                    yield Button("Sync Now", id="sync-now-button")
+
+                                yield Static("", id="sync-message")
  
                             with Vertical(id="subjects-panel"):
                                 yield Static("Subjects", id="subject-panel-title")
@@ -690,7 +701,10 @@ class StudyStreakApp(App):
         main_container.display = False
 
         subjects_panel = self.query_one("#subjects-panel")
+        sync_panel = self.query_one("#sync-panel")
+
         subjects_panel.display = False
+        sync_panel.display = False
 
         subject_edit_panel = self.query_one("#subject-edit-panel")
         subject_delete_panel = self.query_one("#subject-delete-panel")
@@ -775,23 +789,29 @@ class StudyStreakApp(App):
         last_local_update = sync_data.get("last_local_update")
         last_cloud_sync = sync_data.get("last_cloud_sync")
         last_sync_error = sync_data.get("last_sync_error")
+        sync_details = self.query_one("#sync-details", Static)
 
         if last_sync_error is not None:
-            sync_status_label.update(f"[red]Sync: Failed - {last_sync_error}[/red]")
+            sync_status_label.update("[red]Sync: Failed[/red]")
+            sync_details.update(f"[red]{last_sync_error}[/red]")
             return
 
         if last_cloud_sync is None:
             sync_status_label.update("[yellow]Sync: Not synced yet[/yellow]")
+            sync_details.update("[yellow]This device has not uploaded cloud data yet.[/yellow]")
             return
         
         if last_local_update is None:
             sync_status_label.update("[green]Sync: Synced[/green]")
+            sync_details.update("[green]Cloud sync is up to date.[/green]")
             return
         
         if last_cloud_sync >= last_local_update:
             sync_status_label.update("[green]Sync: Synced[/green]")
+            sync_details.update("[green]Cloud sync is up to date.[/green]")
         else:
             sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
+            sync_details.update("[yellow]A recent local change is waiting to upload.[/yellow]")
 
     def show_temp_message(self, widget_id, text, seconds=5):
         #show message then hide it
@@ -820,6 +840,7 @@ class StudyStreakApp(App):
             "#message",
             "#manage-message",
             "#settings-message",
+            "#sync-message",
             "#subject-message",
             "#edit-website-message",
             "#delete-subject-message",
@@ -832,6 +853,28 @@ class StudyStreakApp(App):
 
         for widget_id in temp_widget_ids:
             self.query_one(widget_id, Static).display = False
+
+
+    def play_ui_sound(self):
+        self.run_worker(
+            partial(play_sound, "ui"),
+            thread=True,
+            group="sound-effects"
+        )
+    
+    def play_focus_complete_sound(self):
+        self.run_worker(
+            partial(play_sound, "focus_complete"),
+            thread=True,
+            group="sound-effects",
+        )   
+
+    def play_streak_protected(self):
+        self.run_worker(
+            partial(play_sound, "streak_protected"),
+            thread=True,
+            group="sound-effects"
+        )
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -852,6 +895,7 @@ class StudyStreakApp(App):
  
     def show_streak_effect(self, streak_count):
         if streak_count > 0:
+            self.play_streak_protected()
             self.push_screen(StreakEffectScreen(streak_count))
         else:
             global_message = self.query_one("#global-message", Static)
@@ -985,9 +1029,12 @@ class StudyStreakApp(App):
             "#focus-message",
             f"[green]Completed focus session. Logged {completed_minutes} minutes of {completed_subject} study.[/green]",
         )
- 
+
+        
         if not already_studied_today:
             self.show_streak_effect(streak_count)
+        else:
+            self.play_focus_complete_sound()
 
     def upload_focus_session_in_background(self, token, subject, minutes):
         #avoid freezing the UI when the server is slow or offline
@@ -1027,6 +1074,9 @@ class StudyStreakApp(App):
     def on_select_changed(self, event: Select.Changed) -> None:
         data = load_data()
 
+        if event.select.has_focus:
+            self.play_ui_sound()
+
         if event.select.id == "focus-subject-select":
             selected_subject = event.value
             website_input = self.query_one("#focus-website-input", Input)
@@ -1050,6 +1100,11 @@ class StudyStreakApp(App):
             saved_website = data["subject_websites"].get(str(selected_subject), "")
             edit_website_input.value = saved_website
     
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if self.logged_in:
+            self.play_ui_sound()
+
+
     def try_remembered_login(self):
         #try auto login from remembered account
         username_input = self.query_one("#login-username-input", Input)
@@ -1220,6 +1275,8 @@ class StudyStreakApp(App):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         
+        self.play_ui_sound()
+
         if event.button.id == "logout-button":
             #logout from Textual UI
             login_container = self.query_one("#login-container")
@@ -1385,15 +1442,28 @@ class StudyStreakApp(App):
         if event.button.id == "settings-weekly-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
+            sync_panel = self.query_one("#sync-panel")
  
             weekly_goal_panel.display = True
             subjects_panel.display = False
+            sync_panel.display = False
             return
- 
- 
+
+        if event.button.id == "settings-sync-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+            sync_panel = self.query_one("#sync-panel")
+
+            weekly_goal_panel.display = False
+            subjects_panel.display = False
+            sync_panel.display = True
+            self.update_sync_status()
+            return
+
         if event.button.id == "settings-subjects-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
+            sync_panel = self.query_one("#sync-panel")
  
             subject_add_panel = self.query_one("#subject-add-panel")
             subject_edit_panel = self.query_one("#subject-edit-panel")
@@ -1401,10 +1471,19 @@ class StudyStreakApp(App):
  
             weekly_goal_panel.display = False
             subjects_panel.display = True
+            sync_panel.display = False
  
             subject_add_panel.display = True
             subject_edit_panel.display = False
             subject_delete_panel.display = False
+            return
+
+        if event.button.id == "sync-now-button":
+            data = load_data()
+            save_data(data)
+            self.update_sync_status()
+            self.show_temp_message("#sync-message", "[yellow]Sync started.[/yellow]")
+            self.set_timer(2, self.update_sync_status)
             return
  
         if event.button.id == "subject-add-tab":
