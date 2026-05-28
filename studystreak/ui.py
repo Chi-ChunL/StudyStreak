@@ -36,7 +36,7 @@ from studystreak.api_client import (
     get_profile_data,
 )
 from studystreak.profile_sync import decrypt_profile_data
-from studystreak.notification import play_sound, show_focus_complete_notification
+from studystreak.notification import play_sound, show_focus_complete_notification, show_sync_failed_notification
 
 
 
@@ -447,6 +447,7 @@ class StudyStreakApp(App):
     logged_in = False
     temp_message_versions = {}
     leaderboard_period = "all"
+    last_notified_sync_error = None
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -634,6 +635,7 @@ class StudyStreakApp(App):
                                 yield Checkbox("Focus complete sound", id="focus-sound-checkbox")
                                 yield Checkbox("Streak protected sound", id="streak-sound-checkbox")
                                 yield Checkbox("Focus complete notification", id="focus-notification-checkbox")
+                                yield Checkbox("Sync failed notification", id="sync-failed-notification-checkbox")
 
                                 yield Static("", id="sounds-message")
 
@@ -808,6 +810,11 @@ class StudyStreakApp(App):
         if last_sync_error is not None:
             sync_status_label.update("[red]Sync: Failed[/red]")
             sync_details.update(f"[red]{last_sync_error}[/red]")
+            
+            if self.last_notified_sync_error != last_sync_error:
+                self.last_notified_sync_error = last_sync_error
+                self.notify_sync_failed(last_sync_error)
+            
             return
 
         if last_cloud_sync is None:
@@ -823,6 +830,7 @@ class StudyStreakApp(App):
         if last_cloud_sync >= last_local_update:
             sync_status_label.update("[green]Sync: Synced[/green]")
             sync_details.update("[green]Cloud sync is up to date.[/green]")
+            self.last_notified_sync_error = None
         else:
             sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
             sync_details.update("[yellow]A recent local change is waiting to upload.[/yellow]")
@@ -838,6 +846,9 @@ class StudyStreakApp(App):
         self.query_one("#focus-notification-checkbox", Checkbox).value = (
             notification_settings.get("focus_complete", True)
         )
+        self.query_one("#sync-failed-notification-checkbox", Checkbox).value = (
+            notification_settings.get("sync_failed", True)
+        )
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         checkbox_sound_map = {
@@ -848,6 +859,7 @@ class StudyStreakApp(App):
 
         notification_checkbox_map = {
             "focus-notification-checkbox": "focus_complete",
+            "sync-failed-notification-checkbox": "sync_failed",
         }
 
         sound_name = checkbox_sound_map.get(event.checkbox.id)
@@ -960,6 +972,16 @@ class StudyStreakApp(App):
         data = load_data()
         notification_settings = data.get("notification-settings", {})
         return notification_settings.get(notification_name, True)
+
+    def notify_sync_failed(self, error_message):
+        if not self.notification_is_enabled("sync_failed"):
+            return
+        
+        self.run_worker(
+            partial(show_sync_failed_notification, error_message),
+            thread=True,
+            group="desktop-notifications",
+        )
 
     def action_escape_quit(self):
         current_time = datetime.now()

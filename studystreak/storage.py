@@ -42,6 +42,7 @@ def get_default_data():
 
         "notification-settings": {
             "focus_complete": True,
+            "sync_failed": True,
         },
 
     }
@@ -104,6 +105,9 @@ def repair_data(data):
     
     if "focus_complete" not in data["notification-settings"]:
         data["notification-settings"]["focus_complete"] = True
+
+    if "sync_failed" not in data["notification-settings"]:
+        data["notification-settings"]["sync_failed"] = True
 
     return data
 

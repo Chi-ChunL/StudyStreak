@@ -49,3 +49,17 @@ def show_focus_complete_notification(subject, minutes):
         )
     except Exception:
         pass
+
+def show_sync_failed_notification(error_message):
+    try:
+        from plyer import notification
+
+        notification.notify(
+            title="StudyStreak",
+            message=f"Cloud sync failed: {error_message}",
+            app_name="StudyStreak",
+            timeout=5,
+        )
+    except Exception:
+        pass
+    
