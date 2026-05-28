@@ -36,7 +36,7 @@ from studystreak.api_client import (
     get_profile_data,
 )
 from studystreak.profile_sync import decrypt_profile_data
-from studystreak.notification import play_sound
+from studystreak.notification import play_sound, show_focus_complete_notification
 
 
 
@@ -601,6 +601,7 @@ class StudyStreakApp(App):
                         with Vertical(id="settings-sidebar"):
                             yield Button("Weekly Goal", id="settings-weekly-button")
                             yield Button("Sync", id="settings-sync-button")
+                            yield Button("Sounds", id="settings-sounds-button")
                             yield Button("Subjects", id="settings-subjects-button")
  
                         with Vertical(id="settings-content"):
@@ -625,7 +626,16 @@ class StudyStreakApp(App):
                                     yield Button("Sync Now", id="sync-now-button")
 
                                 yield Static("", id="sync-message")
- 
+
+                            with Vertical(id="sounds-panel"):
+                                yield Static("Sound settings", id="sound-panel-title")
+
+                                yield Checkbox("UI sounds", id="ui-sounds-checkbox")
+                                yield Checkbox("Focus complete sound", id="focus-sound-checkbox")
+                                yield Checkbox("Streak protected sound", id="streak-sound-checkbox")
+
+                                yield Static("", id="sounds-message")
+
                             with Vertical(id="subjects-panel"):
                                 yield Static("Subjects", id="subject-panel-title")
  
@@ -711,6 +721,9 @@ class StudyStreakApp(App):
 
         subject_edit_panel.display = False
         subject_delete_panel.display = False
+
+        sound_panel = self.query_one("#sounds-panel")
+        sound_panel.display = False
 
         timetable_form_panel = self.query_one("#timetable-form-panel")
         timetable_form_panel.display = False
@@ -812,6 +825,37 @@ class StudyStreakApp(App):
         else:
             sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
             sync_details.update("[yellow]A recent local change is waiting to upload.[/yellow]")
+    
+    def update_sound_settings_panel(self):
+        data = load_data()
+        sound_settings = data.get("sound_settings", {})
+
+        self.query_one("#ui-sounds-checkbox", Checkbox).value = sound_settings.get("ui", True)
+        self.query_one("#focus-sound-checkbox", Checkbox).value = sound_settings.get("focus_complete", True)
+        self.query_one("#streak-sound-checkbox", Checkbox).value = sound_settings.get("streak_protected", True)
+    
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        checkbox_sound_map = {
+            "ui-sounds-checkbox": "ui",
+            "focus-sound-checkbox": "focus_complete",
+            "streak-sound-checkbox": "streak_protected",
+        }
+
+        sound_name = checkbox_sound_map.get(event.checkbox.id)
+
+        if sound_name is None:
+            return
+        
+        data = load_data()
+        data["sound_settings"][sound_name] = event.value
+        save_data(data)
+
+        self.show_temp_message(
+            "#sounds-message",
+            "[green]Sound settings updated.[/green]",
+            seconds=2.,
+        )
+
 
     def show_temp_message(self, widget_id, text, seconds=5):
         #show message then hide it
@@ -854,26 +898,36 @@ class StudyStreakApp(App):
         for widget_id in temp_widget_ids:
             self.query_one(widget_id, Static).display = False
 
-
-    def play_ui_sound(self):
-        self.run_worker(
-            partial(play_sound, "ui"),
-            thread=True,
-            group="sound-effects"
-        )
     
-    def play_focus_complete_sound(self):
+    def sound_is_enabled(self, sound_name):
+        data = load_data()
+        sound_settings = data.get("sound_settings", {})
+        return sound_settings.get(sound_name, True)
+
+    def play_app_sound(self, sound_name):
+        if not self.sound_is_enabled(sound_name):
+            return
+        
         self.run_worker(
-            partial(play_sound, "focus_complete"),
+            partial(play_sound, sound_name),
             thread=True,
             group="sound-effects",
-        )   
+        )
+
+    def play_ui_sound(self):
+        self.play_app_sound("ui")
+    
+    def play_focus_complete_sound(self):
+        self.play_app_sound("focus_complete")
 
     def play_streak_protected(self):
+        self.play_app_sound("streak_protected")
+
+    def show_focus_notification(self, subject, minutes):
         self.run_worker(
-            partial(play_sound, "streak_protected"),
+            partial(show_focus_complete_notification, subject, minutes),
             thread=True,
-            group="sound-effects"
+            group="desktop-notifications",
         )
 
     def action_escape_quit(self):
@@ -1035,6 +1089,7 @@ class StudyStreakApp(App):
             self.show_streak_effect(streak_count)
         else:
             self.play_focus_complete_sound()
+        self.show_focus_notification(completed_subject, completed_minutes)
 
     def upload_focus_session_in_background(self, token, subject, minutes):
         #avoid freezing the UI when the server is slow or offline
@@ -1443,7 +1498,9 @@ class StudyStreakApp(App):
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
- 
+            sounds_panel = self.query_one("#sounds-panel")
+
+            sounds_panel.display = False
             weekly_goal_panel.display = True
             subjects_panel.display = False
             sync_panel.display = False
@@ -1453,18 +1510,37 @@ class StudyStreakApp(App):
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
+            sounds_panel = self.query_one("#sounds-panel")
 
+            sounds_panel.display = False
             weekly_goal_panel.display = False
             subjects_panel.display = False
             sync_panel.display = True
             self.update_sync_status()
+            return 
+        
+        if event.button.id == "settings-sounds-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            sync_panel = self.query_one("#sync-panel")
+            sounds_panel = self.query_one("#sounds-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+
+            weekly_goal_panel.display = False
+            sync_panel.display = False
+            sounds_panel.display = True
+            subjects_panel.display = False
+
+            self.update_sound_settings_panel()
             return
+
 
         if event.button.id == "settings-subjects-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
- 
+            sounds_panel = self.query_one("#sounds-panel")
+
+
             subject_add_panel = self.query_one("#subject-add-panel")
             subject_edit_panel = self.query_one("#subject-edit-panel")
             subject_delete_panel = self.query_one("#subject-delete-panel")
@@ -1472,7 +1548,8 @@ class StudyStreakApp(App):
             weekly_goal_panel.display = False
             subjects_panel.display = True
             sync_panel.display = False
- 
+            sounds_panel.display = False
+
             subject_add_panel.display = True
             subject_edit_panel.display = False
             subject_delete_panel.display = False

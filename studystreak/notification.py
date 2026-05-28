@@ -37,3 +37,15 @@ def play_sound(sound_name):
     
     print("\a", end="", flush=True)
 
+def show_focus_complete_notification(subject, minutes):
+    try:
+        from plyer import notification
+
+        notification.notify(
+            title="StudyStreak",
+            message=f"Focus session complete: {minutes} minutes of {subject}",
+            app_name="StudyStreak",
+            timeout=5,
+        )
+    except Exception:
+        pass

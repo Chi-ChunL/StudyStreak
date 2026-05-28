@@ -33,6 +33,11 @@ def get_default_data():
             "last_local_update": None,
             "last_cloud_sync": None,
             "last_sync_error": None,
+        "sound_settings": {
+            "ui": True,
+            "focus_complete": True,
+            "streak_protected": True,
+        },
         },
     }
 
@@ -73,6 +78,18 @@ def repair_data(data):
 
     if data["sync"]["device_id"] is None:
         data["sync"]["device_id"] = str(uuid4())
+    
+    if "sound_settings" not in data:
+        data["sound_settings"] = {}
+    
+    if "ui" not in data["sound_settings"]:
+        data["sound_settings"]["ui"] = True
+
+    if "focus_complete" not in data["sound_settings"]:
+        data["sound_settings"]["focus_complete"] = True
+    
+    if "streak_protected" not in data["sound_settings"]:
+        data["sound_settings"]["streak_protected"] = True
 
     return data
 

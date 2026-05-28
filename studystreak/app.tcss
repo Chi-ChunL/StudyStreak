@@ -430,6 +430,7 @@ TabPane {
 
 #settings-weekly-button,
 #settings-sync-button,
+#settings-sounds-button,
 #settings-subjects-button {
     width: 100%;
     height: 1;
@@ -443,6 +444,7 @@ TabPane {
 
 #settings-weekly-button:hover,
 #settings-sync-button:hover,
+#settings-sounds-button:hover,
 #settings-subjects-button:hover {
     background: #222222;
     color: white;
@@ -456,6 +458,31 @@ TabPane {
     height: auto;
 }
 
+
+#sound-panel {
+    width: 100%;
+    height: auto;
+}
+
+#sound-panel-title {
+    text-align: center;
+    color: #cfcfcf;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#ui-sounds-checkbox,
+#focus-sound-checkbox,
+#streak-sound-checkbox {
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#sounds-message {
+    margin-top: 1;
+    text-align: center;
+    color: green;
+}
 
 /* #------------------weekly goal settings------------------- */
 

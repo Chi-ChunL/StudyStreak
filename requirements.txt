@@ -14,3 +14,4 @@ python-dotenv
 sqlalchemy
 python-multipart
 slowapi
+plyer
