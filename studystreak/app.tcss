@@ -430,6 +430,7 @@ TabPane {
 
 #settings-weekly-button,
 #settings-sync-button,
+#settings-appearance-button,
 #settings-sounds-button,
 #settings-subjects-button {
     width: 100%;
@@ -444,6 +445,7 @@ TabPane {
 
 #settings-weekly-button:hover,
 #settings-sync-button:hover,
+#settings-appearance-button:hover,
 #settings-sounds-button:hover,
 #settings-subjects-button:hover {
     background: #222222;
@@ -453,17 +455,15 @@ TabPane {
 
 #weekly-goal-panel,
 #sync-panel,
+#appearance-panel,
+#sounds-panel,
 #subjects-panel {
     width: 100%;
     height: auto;
 }
 
 
-#sound-panel {
-    width: 100%;
-    height: auto;
-}
-
+#appearance-panel-title,
 #sound-panel-title {
     text-align: center;
     color: #cfcfcf;
@@ -475,11 +475,13 @@ TabPane {
 #focus-sound-checkbox,
 #streak-sound-checkbox,
 #focus-notification-checkbox,
-#sync-failed-notification-checkbox {
+#sync-failed-notification-checkbox,
+#light-mode-checkbox {
     color: #cfcfcf;
     margin-bottom: 1;
 }
 
+#appearance-message,
 #sounds-message {
     margin-top: 1;
     text-align: center;
@@ -837,4 +839,578 @@ TabPane {
     padding: 1;
     margin-top: 1;
     margin-bottom: 1;
+}
+/* #------------------dark mode default override------------------- */
+
+Screen {
+    align: center middle;
+    background: #0f0f0f;
+    color: #cfcfcf;
+}
+
+#main-container,
+#login-container {
+    background: #111111;
+    border: round grey;
+    color: #cfcfcf;
+}
+
+#title,
+#login-title {
+    color: grey;
+}
+
+#subtitle,
+#login-subtitle {
+    color: white;
+}
+
+#sync-status-label,
+#server-status-label,
+#account-label {
+    color: #cfcfcf;
+}
+
+TabbedContent,
+TabPane {
+    background: #111111;
+    color: #cfcfcf;
+}
+
+Input {
+    background: #1a1a1a;
+    color: #cfcfcf;
+    border: tall #555555;
+}
+
+Input:focus {
+    border: tall #888888;
+}
+
+Select {
+    background: transparent;
+    color: #cfcfcf;
+    border: none;
+    height: 3;
+}
+
+Select:focus {
+    border: none;
+}
+
+Select > SelectCurrent {
+    background: #1a1a1a;
+    color: #cfcfcf;
+    border: tall #555555;
+    height: 3;
+}
+
+Select:focus > SelectCurrent {
+    background: #222222;
+    color: #cfcfcf;
+    border: tall #888888;
+}
+
+Select > SelectCurrent Static#label {
+    background: transparent;
+    color: #b8b8b8;
+}
+
+Select > SelectCurrent.-has-value Static#label {
+    color: #cfcfcf;
+}
+
+Select > SelectCurrent .arrow {
+    background: transparent;
+    color: #b8b8b8;
+}
+
+Button,
+#login-button,
+#create-account-button,
+#log-button,
+#open-website-button,
+#start-focus-button,
+#refresh-leaderboard-button,
+#save-goal-button,
+#add-subject-button,
+#update-website-button,
+#show-timetable-form-button,
+#add-timetable-button,
+#sync-now-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+}
+
+Button:hover,
+#login-button:hover,
+#create-account-button:hover,
+#log-button:hover,
+#open-website-button:hover,
+#start-focus-button:hover,
+#refresh-leaderboard-button:hover,
+#save-goal-button:hover,
+#add-subject-button:hover,
+#update-website-button:hover,
+#show-timetable-form-button:hover,
+#add-timetable-button:hover,
+#sync-now-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#logout-button,
+#leaderboard-today-button,
+#leaderboard-week-button,
+#leaderboard-all-button,
+#settings-weekly-button,
+#settings-sync-button,
+#settings-appearance-button,
+#settings-sounds-button,
+#settings-subjects-button,
+#subject-add-tab,
+#subject-edit-tab,
+#subject-delete-tab {
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+}
+
+#logout-button:hover,
+#leaderboard-today-button:hover,
+#leaderboard-week-button:hover,
+#leaderboard-all-button:hover,
+#settings-weekly-button:hover,
+#settings-sync-button:hover,
+#settings-appearance-button:hover,
+#settings-sounds-button:hover,
+#settings-subjects-button:hover,
+#subject-add-tab:hover,
+#subject-edit-tab:hover,
+#subject-delete-tab:hover {
+    background: #222222;
+    color: white;
+    border: none;
+}
+
+#dashboard,
+#recent-sessions,
+#subject-stats,
+#leaderboard,
+#today-timetable,
+#timetable-grid,
+#sync-details,
+#timetable-form-panel {
+    background: #111111;
+    color: #cfcfcf;
+    border: round #555555;
+}
+
+#settings-title,
+#goal-panel-title,
+#sync-panel-title,
+#appearance-panel-title,
+#sound-panel-title,
+#subject-panel-title,
+#subject-add-title,
+#edit-website-title,
+#delete-subject-title,
+#log-title,
+#manage-title,
+#focus-title,
+#leaderboard-title,
+#timetable-title {
+    color: #cfcfcf;
+}
+
+#settings-sidebar {
+    border-right: solid #555555;
+}
+
+#ui-sounds-checkbox,
+#focus-sound-checkbox,
+#streak-sound-checkbox,
+#focus-notification-checkbox,
+#sync-failed-notification-checkbox,
+#light-mode-checkbox,
+#remember-me-checkbox {
+    color: #cfcfcf;
+}
+
+#cancel-focus-button,
+#delete-selected-button,
+#delete-subject-button,
+#hide-timetable-form-button,
+#confirm-delete-subject-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#cancel-focus-button:hover,
+#delete-selected-button:hover,
+#delete-subject-button:hover,
+#hide-timetable-form-button:hover,
+#confirm-delete-subject-button:hover {
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
+}
+
+#delete-subject-confirm-box,
+#streak-effect-box {
+    background: #111111;
+    border: round #555555;
+    color: #cfcfcf;
+}
+
+#delete-subject-confirm-message,
+#streak-effect-message {
+    color: #cfcfcf;
+}
+
+#message,
+#settings-message,
+#sync-message,
+#appearance-message,
+#subject-message,
+#edit-website-message,
+#focus-message,
+#login-message,
+#timetable-message {
+    color: green;
+}
+
+#manage-message,
+#delete-subject-message,
+#global-message {
+    color: yellow;
+}
+
+
+/* #------------------light mode conditional override------------------- */
+
+Screen.light-mode {
+    background: #ded2b8;
+    color: #2b2620;
+}
+
+.light-mode #main-container,
+.light-mode #login-container {
+    background: #f3e8d3;
+    border: round #6f8190;
+    color: #2b2620;
+}
+
+.light-mode #title,
+.light-mode #login-title {
+    color: #254f6f;
+}
+
+.light-mode #subtitle,
+.light-mode #login-subtitle {
+    color: #3d332d;
+}
+
+.light-mode #sync-status-label,
+.light-mode #server-status-label,
+.light-mode #account-label {
+    color: #254f6f;
+}
+
+.light-mode TabbedContent,
+.light-mode TabPane {
+    background: #f3e8d3;
+    color: #2b2620;
+}
+
+.light-mode Tabs {
+    background: #e8d9bd;
+    color: #2b2620;
+}
+
+.light-mode Tab {
+    background: #e8d9bd;
+    color: #3d332d;
+}
+
+.light-mode Tab.-active {
+    background: #6f8799;
+    color: #fff8e8;
+    text-style: bold;
+}
+
+.light-mode Input {
+    background: #fff8e8;
+    color: #2b2620;
+    border: round #9a8567;
+}
+
+.light-mode Input:focus {
+    background: #fff3db;
+    border: round #6f8799;
+}
+
+.light-mode Select {
+    background: transparent;
+    color: #2b2620;
+    border: none;
+}
+
+.light-mode Select:focus {
+    border: none;
+}
+
+.light-mode Input .input--placeholder {
+    color: #5e534a;
+}
+
+.light-mode Input .input--cursor {
+    background: #254f6f;
+    color: #fff8e8;
+}
+
+.light-mode Input .input--selection {
+    background: #d8e2e8;
+    color: #1f2529;
+}
+
+.light-mode Select > SelectCurrent {
+    background: #fff8e8;
+    color: #2b2620;
+    border: round #9a8567;
+}
+
+.light-mode Select:focus > SelectCurrent {
+    background: #fff3db;
+    color: #2b2620;
+    border: round #6f8799;
+}
+
+.light-mode Select > SelectCurrent Static#label {
+    background: transparent;
+    color: #5e534a;
+}
+
+.light-mode Select > SelectCurrent.-has-value Static#label {
+    color: #2b2620;
+}
+
+.light-mode Select > SelectCurrent .arrow {
+    background: transparent;
+    color: #4c443d;
+}
+
+.light-mode Select > SelectOverlay {
+    background: #fff8e8;
+    color: #2b2620;
+    border: tall #6f8799;
+}
+
+.light-mode Select > SelectOverlay > .option-list--option {
+    background: #fff8e8;
+    color: #2b2620;
+}
+
+.light-mode Select > SelectOverlay > .option-list--option-highlighted,
+.light-mode Select > SelectOverlay > .option-list--option-hover {
+    background: #d8e2e8;
+    color: #1f2529;
+}
+
+.light-mode Button,
+.light-mode #login-button,
+.light-mode #create-account-button,
+.light-mode #log-button,
+.light-mode #open-website-button,
+.light-mode #start-focus-button,
+.light-mode #refresh-leaderboard-button,
+.light-mode #save-goal-button,
+.light-mode #add-subject-button,
+.light-mode #update-website-button,
+.light-mode #show-timetable-form-button,
+.light-mode #add-timetable-button,
+.light-mode #sync-now-button {
+    background: #6f8799;
+    color: #fff8e8;
+    border: round #526a7c;
+    text-style: bold;
+}
+
+.light-mode Button:hover,
+.light-mode #login-button:hover,
+.light-mode #create-account-button:hover,
+.light-mode #log-button:hover,
+.light-mode #open-website-button:hover,
+.light-mode #start-focus-button:hover,
+.light-mode #refresh-leaderboard-button:hover,
+.light-mode #save-goal-button:hover,
+.light-mode #add-subject-button:hover,
+.light-mode #update-website-button:hover,
+.light-mode #show-timetable-form-button:hover,
+.light-mode #add-timetable-button:hover,
+.light-mode #sync-now-button:hover {
+    background: #5c7486;
+    color: white;
+    border: round #405b6d;
+}
+
+.light-mode #logout-button,
+.light-mode #leaderboard-today-button,
+.light-mode #leaderboard-week-button,
+.light-mode #leaderboard-all-button,
+.light-mode #settings-weekly-button,
+.light-mode #settings-sync-button,
+.light-mode #settings-appearance-button,
+.light-mode #settings-sounds-button,
+.light-mode #settings-subjects-button,
+.light-mode #subject-add-tab,
+.light-mode #subject-edit-tab,
+.light-mode #subject-delete-tab {
+    background: transparent;
+    color: #254f6f;
+    border: none;
+    text-style: bold;
+}
+
+.light-mode #logout-button:hover,
+.light-mode #leaderboard-today-button:hover,
+.light-mode #leaderboard-week-button:hover,
+.light-mode #leaderboard-all-button:hover,
+.light-mode #settings-weekly-button:hover,
+.light-mode #settings-sync-button:hover,
+.light-mode #settings-appearance-button:hover,
+.light-mode #settings-sounds-button:hover,
+.light-mode #settings-subjects-button:hover,
+.light-mode #subject-add-tab:hover,
+.light-mode #subject-edit-tab:hover,
+.light-mode #subject-delete-tab:hover {
+    background: #d9c8aa;
+    color: #2b2620;
+    border: none;
+}
+
+.light-mode #dashboard,
+.light-mode #recent-sessions,
+.light-mode #subject-stats,
+.light-mode #leaderboard,
+.light-mode #today-timetable,
+.light-mode #timetable-grid,
+.light-mode #sync-details,
+.light-mode #timetable-form-panel {
+    background: #fbf1dd;
+    color: #2b2620;
+    border: round #9a8567;
+}
+
+.light-mode #settings-title,
+.light-mode #goal-panel-title,
+.light-mode #sync-panel-title,
+.light-mode #appearance-panel-title,
+.light-mode #sound-panel-title,
+.light-mode #subject-panel-title,
+.light-mode #subject-add-title,
+.light-mode #edit-website-title,
+.light-mode #delete-subject-title,
+.light-mode #log-title,
+.light-mode #manage-title,
+.light-mode #focus-title,
+.light-mode #leaderboard-title,
+.light-mode #timetable-title {
+    color: #254f6f;
+}
+
+.light-mode #settings-sidebar {
+    border-right: solid #9a8567;
+}
+
+.light-mode #ui-sounds-checkbox,
+.light-mode #focus-sound-checkbox,
+.light-mode #streak-sound-checkbox,
+.light-mode #focus-notification-checkbox,
+.light-mode #sync-failed-notification-checkbox,
+.light-mode #light-mode-checkbox,
+.light-mode #remember-me-checkbox {
+    color: #2b2620;
+}
+
+.light-mode Checkbox {
+    background: transparent;
+    color: #2b2620;
+}
+
+.light-mode Checkbox:focus {
+    background: #e8d9bd;
+    color: #2b2620;
+}
+
+.light-mode Checkbox > .toggle--button,
+.light-mode Checkbox:focus > .toggle--button {
+    background: #fff8e8;
+    color: #254f6f;
+    border: tall #9a8567;
+}
+
+.light-mode Checkbox > .toggle--label,
+.light-mode Checkbox:focus > .toggle--label {
+    background: transparent;
+    color: #2b2620;
+}
+
+.light-mode #cancel-focus-button,
+.light-mode #delete-selected-button,
+.light-mode #delete-subject-button,
+.light-mode #hide-timetable-form-button,
+.light-mode #confirm-delete-subject-button {
+    background: #a85c5c;
+    color: #fff8e8;
+    border: round #814242;
+    text-style: bold;
+}
+
+.light-mode #cancel-focus-button:hover,
+.light-mode #delete-selected-button:hover,
+.light-mode #delete-subject-button:hover,
+.light-mode #hide-timetable-form-button:hover,
+.light-mode #confirm-delete-subject-button:hover {
+    background: #8c4949;
+    color: white;
+    border: round #6d3333;
+}
+
+.light-mode #delete-subject-confirm-box,
+.light-mode #streak-effect-box {
+    background: #fbf1dd;
+    border: round #9a8567;
+    color: #2b2620;
+}
+
+.light-mode #delete-subject-confirm-message,
+.light-mode #streak-effect-message {
+    color: #2b2620;
+}
+
+.light-mode #focus-timer {
+    color: #8b581f;
+    text-style: bold;
+}
+
+.light-mode #message,
+.light-mode #settings-message,
+.light-mode #sync-message,
+.light-mode #appearance-message,
+.light-mode #subject-message,
+.light-mode #edit-website-message,
+.light-mode #focus-message,
+.light-mode #login-message,
+.light-mode #timetable-message {
+    color: #246b31;
+}
+
+.light-mode #manage-message,
+.light-mode #delete-subject-message,
+.light-mode #global-message {
+    color: #76501d;
 }

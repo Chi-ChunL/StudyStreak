@@ -44,6 +44,9 @@ def get_default_data():
             "focus_complete": True,
             "sync_failed": True,
         },
+        "appearance_settings": {
+            "theme": "dark",
+        },
 
     }
 
@@ -108,6 +111,15 @@ def repair_data(data):
 
     if "sync_failed" not in data["notification-settings"]:
         data["notification-settings"]["sync_failed"] = True
+
+    if "appearance_settings" not in data:
+        data["appearance_settings"] = {}
+
+    if "theme" not in data["appearance_settings"]:
+        data["appearance_settings"]["theme"] = "dark"
+
+    if data["appearance_settings"]["theme"] not in ["dark", "light"]:
+        data["appearance_settings"]["theme"] = "dark"
 
     return data
 

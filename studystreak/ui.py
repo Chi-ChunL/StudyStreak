@@ -453,7 +453,7 @@ class StudyStreakApp(App):
         yield Header()
         
         with Container(id="login-container"):
-            yield Static("StudyStreak Login", id="login-title")
+            yield Static("Study >_ Streak", id="login-title")
             yield Static("Log in or create an account.", id="login-subtitle")
 
             yield Input(placeholder="Username", id="login-username-input")
@@ -469,7 +469,7 @@ class StudyStreakApp(App):
         with Container(id="main-container"):
             yield Static("", id="server-status-label")
             yield Static("", id="sync-status-label")
-            yield Static("StudyStreak CLI", id="title")
+            yield Static("Study >_ Streak", id="title")
             yield Static("Track your study streak and log your progress.", id="subtitle")
 
             with Horizontal(id="account-row"):
@@ -602,6 +602,7 @@ class StudyStreakApp(App):
                         with Vertical(id="settings-sidebar"):
                             yield Button("Weekly Goal", id="settings-weekly-button")
                             yield Button("Sync", id="settings-sync-button")
+                            yield Button("Appearance", id="settings-appearance-button")
                             yield Button("Sounds", id="settings-sounds-button")
                             yield Button("Subjects", id="settings-subjects-button")
  
@@ -627,6 +628,11 @@ class StudyStreakApp(App):
                                     yield Button("Sync Now", id="sync-now-button")
 
                                 yield Static("", id="sync-message")
+
+                            with Vertical(id="appearance-panel"):
+                                yield Static("Appearance", id="appearance-panel-title")
+                                yield Checkbox("Light mode", id="light-mode-checkbox")
+                                yield Static("", id="appearance-message")
 
                             with Vertical(id="sounds-panel"):
                                 yield Static("Sound settings", id="sound-panel-title")
@@ -715,9 +721,11 @@ class StudyStreakApp(App):
 
         subjects_panel = self.query_one("#subjects-panel")
         sync_panel = self.query_one("#sync-panel")
+        appearance_panel = self.query_one("#appearance-panel")
 
         subjects_panel.display = False
         sync_panel.display = False
+        appearance_panel.display = False
 
         subject_edit_panel = self.query_one("#subject-edit-panel")
         subject_delete_panel = self.query_one("#subject-delete-panel")
@@ -731,6 +739,7 @@ class StudyStreakApp(App):
         timetable_form_panel = self.query_one("#timetable-form-panel")
         timetable_form_panel.display = False
 
+        self.apply_theme()
         self.hide_all_temp_messages()
         self.try_remembered_login()
  
@@ -834,6 +843,23 @@ class StudyStreakApp(App):
         else:
             sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
             sync_details.update("[yellow]A recent local change is waiting to upload.[/yellow]")
+
+    def apply_theme(self):
+        data = load_data()
+        appearance_settings = data.get("appearance_settings", {})
+        theme = appearance_settings.get("theme", "dark")
+
+        if theme == "light":
+            self.screen.add_class("light-mode")
+        else:
+            self.screen.remove_class("light-mode")
+
+    def update_appearance_settings_panel(self):
+        data = load_data()
+        appearance_settings = data.get("appearance_settings", {})
+        theme = appearance_settings.get("theme", "dark")
+
+        self.query_one("#light-mode-checkbox", Checkbox).value = theme == "light"
     
     def update_sound_settings_panel(self):
         data = load_data()
@@ -861,6 +887,24 @@ class StudyStreakApp(App):
             "focus-notification-checkbox": "focus_complete",
             "sync-failed-notification-checkbox": "sync_failed",
         }
+
+        if event.checkbox.id == "light-mode-checkbox":
+            data = load_data()
+
+            if event.value:
+                data["appearance_settings"]["theme"] = "light"
+            else:
+                data["appearance_settings"]["theme"] = "dark"
+
+            save_data(data)
+            self.apply_theme()
+
+            self.show_temp_message(
+                "#appearance-message",
+                "[green]Appearance updated.[/green]",
+                seconds=2,
+            )
+            return
 
         sound_name = checkbox_sound_map.get(event.checkbox.id)
 
@@ -919,6 +963,7 @@ class StudyStreakApp(App):
             "#manage-message",
             "#settings-message",
             "#sync-message",
+            "#appearance-message",
             "#subject-message",
             "#edit-website-message",
             "#delete-subject-message",
@@ -1328,6 +1373,7 @@ class StudyStreakApp(App):
         main_container.display = True
 
         self.logged_in = True
+        self.apply_theme()
         self.update_server_status()
         self.update_sync_status()
         self.set_interval(2, self.update_sync_status)
@@ -1552,7 +1598,9 @@ class StudyStreakApp(App):
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
+            appearance_panel = self.query_one("#appearance-panel")
 
+            appearance_panel.display = False
             sounds_panel.display = False
             weekly_goal_panel.display = True
             subjects_panel.display = False
@@ -1564,24 +1612,44 @@ class StudyStreakApp(App):
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
+            appearance_panel = self.query_one("#appearance-panel")
 
+            appearance_panel.display = False
             sounds_panel.display = False
             weekly_goal_panel.display = False
             subjects_panel.display = False
             sync_panel.display = True
             self.update_sync_status()
             return 
+
+        if event.button.id == "settings-appearance-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            sync_panel = self.query_one("#sync-panel")
+            sounds_panel = self.query_one("#sounds-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+            appearance_panel = self.query_one("#appearance-panel")
+
+            weekly_goal_panel.display = False
+            sync_panel.display = False
+            sounds_panel.display = False
+            subjects_panel.display = False
+            appearance_panel.display = True
+
+            self.update_appearance_settings_panel()
+            return
         
         if event.button.id == "settings-sounds-button":
             weekly_goal_panel = self.query_one("#weekly-goal-panel")
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
             subjects_panel = self.query_one("#subjects-panel")
+            appearance_panel = self.query_one("#appearance-panel")
 
             weekly_goal_panel.display = False
             sync_panel.display = False
             sounds_panel.display = True
             subjects_panel.display = False
+            appearance_panel.display = False
 
             self.update_sound_settings_panel()
             return
@@ -1592,6 +1660,7 @@ class StudyStreakApp(App):
             subjects_panel = self.query_one("#subjects-panel")
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
+            appearance_panel = self.query_one("#appearance-panel")
 
 
             subject_add_panel = self.query_one("#subject-add-panel")
@@ -1602,6 +1671,7 @@ class StudyStreakApp(App):
             subjects_panel.display = True
             sync_panel.display = False
             sounds_panel.display = False
+            appearance_panel.display = False
 
             subject_add_panel.display = True
             subject_edit_panel.display = False
