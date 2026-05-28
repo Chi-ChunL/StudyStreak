@@ -633,6 +633,7 @@ class StudyStreakApp(App):
                                 yield Checkbox("UI sounds", id="ui-sounds-checkbox")
                                 yield Checkbox("Focus complete sound", id="focus-sound-checkbox")
                                 yield Checkbox("Streak protected sound", id="streak-sound-checkbox")
+                                yield Checkbox("Focus complete notification", id="focus-notification-checkbox")
 
                                 yield Static("", id="sounds-message")
 
@@ -829,11 +830,15 @@ class StudyStreakApp(App):
     def update_sound_settings_panel(self):
         data = load_data()
         sound_settings = data.get("sound_settings", {})
+        notification_settings = data.get("notification-settings", {})
 
         self.query_one("#ui-sounds-checkbox", Checkbox).value = sound_settings.get("ui", True)
         self.query_one("#focus-sound-checkbox", Checkbox).value = sound_settings.get("focus_complete", True)
         self.query_one("#streak-sound-checkbox", Checkbox).value = sound_settings.get("streak_protected", True)
-    
+        self.query_one("#focus-notification-checkbox", Checkbox).value = (
+            notification_settings.get("focus_complete", True)
+        )
+
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         checkbox_sound_map = {
             "ui-sounds-checkbox": "ui",
@@ -841,20 +846,37 @@ class StudyStreakApp(App):
             "streak-sound-checkbox": "streak_protected",
         }
 
+        notification_checkbox_map = {
+            "focus-notification-checkbox": "focus_complete",
+        }
+
         sound_name = checkbox_sound_map.get(event.checkbox.id)
 
-        if sound_name is None:
-            return
-        
-        data = load_data()
-        data["sound_settings"][sound_name] = event.value
-        save_data(data)
+        if sound_name is not None:
+            data = load_data()
+            data["sound_settings"][sound_name] = event.value
+            save_data(data)
 
-        self.show_temp_message(
-            "#sounds-message",
-            "[green]Sound settings updated.[/green]",
-            seconds=2.,
-        )
+            self.show_temp_message(
+                "#sounds-message",
+                "[green]Sound settings updated.[/green]",
+                seconds=2,
+            )
+            return
+
+        notification_name = notification_checkbox_map.get(event.checkbox.id)
+        
+        if notification_name is not None:
+            data = load_data()
+            data["notification-settings"][notification_name] = event.value
+            save_data(data)
+
+            self.show_temp_message(
+                "#sounds-message",
+                "[green]Notification settings updated.[/green]",
+                seconds=2,
+            )
+            return
 
 
     def show_temp_message(self, widget_id, text, seconds=5):
@@ -924,11 +946,20 @@ class StudyStreakApp(App):
         self.play_app_sound("streak_protected")
 
     def show_focus_notification(self, subject, minutes):
+
+        if not self.notification_is_enabled("focus_complete"):
+            return
+
         self.run_worker(
             partial(show_focus_complete_notification, subject, minutes),
             thread=True,
             group="desktop-notifications",
         )
+    
+    def notification_is_enabled(self, notification_name):
+        data = load_data()
+        notification_settings = data.get("notification-settings", {})
+        return notification_settings.get(notification_name, True)
 
     def action_escape_quit(self):
         current_time = datetime.now()

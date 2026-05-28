@@ -473,7 +473,8 @@ TabPane {
 
 #ui-sounds-checkbox,
 #focus-sound-checkbox,
-#streak-sound-checkbox {
+#streak-sound-checkbox,
+#focus-notification-checkbox {
     color: #cfcfcf;
     margin-bottom: 1;
 }

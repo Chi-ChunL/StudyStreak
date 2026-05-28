@@ -33,12 +33,17 @@ def get_default_data():
             "last_local_update": None,
             "last_cloud_sync": None,
             "last_sync_error": None,
+        },
         "sound_settings": {
             "ui": True,
             "focus_complete": True,
             "streak_protected": True,
         },
+
+        "notification-settings": {
+            "focus_complete": True,
         },
+
     }
 
 def get_utc_now_text():
@@ -90,6 +95,15 @@ def repair_data(data):
     
     if "streak_protected" not in data["sound_settings"]:
         data["sound_settings"]["streak_protected"] = True
+
+    if "notification_settings" in data:
+        data["notification-settings"] = data.pop("notification_settings")
+
+    if "notification-settings" not in data:
+        data["notification-settings"] = {}
+    
+    if "focus_complete" not in data["notification-settings"]:
+        data["notification-settings"]["focus_complete"] = True
 
     return data
 
