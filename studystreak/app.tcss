@@ -474,8 +474,10 @@ TabPane {
 #ui-sounds-checkbox,
 #focus-sound-checkbox,
 #streak-sound-checkbox,
+#achievement-sound-checkbox,
 #focus-notification-checkbox,
 #sync-failed-notification-checkbox,
+#achievement-notification-checkbox,
 #light-mode-checkbox {
     color: #cfcfcf;
     margin-bottom: 1;
@@ -729,7 +731,33 @@ TabPane {
 }
 
 
-/* #------------------streak effect modal------------------- */
+/* #-------------------achievement effect modal---------------------*/
+
+#achievement-effect-box {
+    width: 50;
+    height: auto;
+    border: round yellow;
+    background: #111111;
+    padding: 1 2;
+    align: center middle
+}
+
+#achievement-effect-title,
+#achievement-effect-name,
+#achievement-effect-message {
+    text-align: center;
+    margin-top: 1;
+}
+
+#achievement-effect-name {
+    color: white;
+}
+
+#achievement-effect-message {
+    color: #cfcfcf;
+}
+
+/* #---------------------streak effect modal------------------- */
 
 #streak-effect-box {
     width: 45;
@@ -999,6 +1027,7 @@ Button:hover,
 #recent-sessions,
 #subject-stats,
 #leaderboard,
+#achievements,
 #today-timetable,
 #timetable-grid,
 #sync-details,
@@ -1034,6 +1063,7 @@ Button:hover,
 #streak-sound-checkbox,
 #focus-notification-checkbox,
 #sync-failed-notification-checkbox,
+#achievement-notification-checkbox,
 #light-mode-checkbox,
 #remember-me-checkbox {
     color: #cfcfcf;
@@ -1090,7 +1120,7 @@ Button:hover,
 }
 
 
-/* #------------------light mode conditional override------------------- */
+/* #------------------light mode------------------- */
 
 Screen.light-mode {
     background: #ded2b8;
@@ -1296,6 +1326,7 @@ Screen.light-mode {
 .light-mode #recent-sessions,
 .light-mode #subject-stats,
 .light-mode #leaderboard,
+.light-mode #achievements,
 .light-mode #today-timetable,
 .light-mode #timetable-grid,
 .light-mode #sync-details,
@@ -1330,7 +1361,9 @@ Screen.light-mode {
 .light-mode #focus-sound-checkbox,
 .light-mode #streak-sound-checkbox,
 .light-mode #focus-notification-checkbox,
+.light-mode #achievement-sound-checkbox,
 .light-mode #sync-failed-notification-checkbox,
+.light-mode #achievement-notification-checkbox,
 .light-mode #light-mode-checkbox,
 .light-mode #remember-me-checkbox {
     color: #2b2620;
@@ -1413,4 +1446,15 @@ Screen.light-mode {
 .light-mode #delete-subject-message,
 .light-mode #global-message {
     color: #76501d;
+}
+
+.lightmode #achievement-effect-box {
+    background: #fbf1dd;
+    border: round #9a8567;
+    color: #2b2620;
+}
+
+.light-mode #achievement-effect-name,
+.light-mode #achievement-effect-message {
+    color: #2b2620;
 }

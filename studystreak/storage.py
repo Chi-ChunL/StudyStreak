@@ -38,14 +38,19 @@ def get_default_data():
             "ui": True,
             "focus_complete": True,
             "streak_protected": True,
+            "achievement": True,
         },
 
         "notification-settings": {
             "focus_complete": True,
             "sync_failed": True,
+            "achievement": True,
         },
         "appearance_settings": {
             "theme": "dark",
+        },
+        "achievements": {
+            "unlocked": [],
         },
 
     }
@@ -120,6 +125,18 @@ def repair_data(data):
 
     if data["appearance_settings"]["theme"] not in ["dark", "light"]:
         data["appearance_settings"]["theme"] = "dark"
+
+    if "achievements" not in data:
+        data["achievements"] = {}
+
+    if "unlocked" not in data["achievements"]:
+        data["achievements"]["unlocked"] = []
+
+    if "achievement" not in data["notification-settings"]:
+        data["notification-settings"]["achievement"] = True
+    
+    if "achievement" not in data["sound_settings"]:
+        data["sound_settings"]["achievement"] = True
 
     return data
 

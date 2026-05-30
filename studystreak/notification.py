@@ -6,7 +6,8 @@ SOUND_DIR =     Path(__file__).resolve().parent / "assets"  / "sounds"
 SOUND_FILES = {
     "ui": SOUND_DIR / "ui.wav",
     "focus_complete": SOUND_DIR / "focus_complete.wav",
-    "streak_protected": SOUND_DIR / "streak_protected.wav"
+    "streak_protected": SOUND_DIR / "streak_protected.wav",
+    "achievement": SOUND_DIR / "achievement.wav"
 }
 
 
@@ -62,4 +63,16 @@ def show_sync_failed_notification(error_message):
         )
     except Exception:
         pass
-    
+
+def show_achievement_notification(name, description):
+    try:
+        from plyer import notification
+
+        notification.notify(
+            title=f"Achievement unlocked: {name}",
+            message=description,
+            app_name="StudyStreak",
+            timeout=5,
+        )
+    except Exception:
+        pass

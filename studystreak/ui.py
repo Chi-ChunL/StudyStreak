@@ -36,7 +36,12 @@ from studystreak.api_client import (
     get_profile_data,
 )
 from studystreak.profile_sync import decrypt_profile_data
-from studystreak.notification import play_sound, show_focus_complete_notification, show_sync_failed_notification
+from studystreak.notification import (
+    play_sound,
+    show_focus_complete_notification,
+    show_sync_failed_notification,
+    show_achievement_notification,
+)
 
 
 
@@ -373,7 +378,109 @@ def is_blank_select_value(value):
         or value is False
         or str(value).lower() in ["", "none", "null", "select.null", "select.blank"]
     )
- 
+
+def calculate_total_minutes(data):
+    return sum(session.get("minutes", 0 ) for session in data.get("sessions", []))
+
+def has_focus_session(data):
+    for session in data.get("sessions", []):
+        if session.get("source") == "focus":
+            return True
+
+    return False
+
+ACHIEVEMENTS = [
+    {
+        "id": "first-session",
+        "name": "First Steps",
+        "description": "Log your first study session.",
+        "condition": lambda data: len(data.get("sessions", [])) >= 1,
+    },
+    {
+        "id": "ten-minutes",
+        "name": "Tiny Grind",
+        "description": "Study for 10 minutes total.",
+        "condition": lambda data: calculate_total_minutes(data) >= 10,
+    },
+    {
+        "id": "one-hour",
+        "name": "One Hour Club",
+        "description": "Study for 60 minutes total.",
+        "condition": lambda data: calculate_total_minutes(data) >= 60
+    },
+    {
+        "id": "three-day-streak",
+        "name": "Three Day Streak",
+        "description": "Reach a 3 day study streak.",
+        "condition": lambda data: calculate_current_streak(data) >= 3,
+    },
+    {
+        "id": "subject-collector",
+        "name": "Subject Collector",
+        "description": "Add 3 subjects.",
+        "condition": lambda data: len(data.get("subjects", [])) >= 3,
+    },
+    {
+        "id": "focused",
+        "name": "Focused",
+        "description": "Complete your first focus session",
+        "condition": lambda data: has_focus_session(data),
+    },
+    {
+        "id": "planner",
+        "name": "Planner",
+        "description": "Add your first timetable session.",
+        "condition": lambda data: len(data.get("timetable", [])) >= 1,
+    },
+]
+
+def get_achievement_display(data):
+    unlocked_ids = set(data.get("achievements", {}).get("unlocked", []))
+    lines = [f"[bold]Achievements[/bold] {len(unlocked_ids)} / {len(ACHIEVEMENTS)} unlocked", ""]
+
+    for achievement in ACHIEVEMENTS:
+        if achievement["id"] in unlocked_ids:
+            status = "[green]Unlocked[/green]"
+        else:
+            status = "[dim]Locked[/dim]"
+
+        lines.append(
+            f"{status} - [bold]{achievement['name']}[/bold]\n"
+            f"  {achievement['description']}"
+        )
+
+    return "\n\n".join(lines)
+
+
+class AchievementEffectScreen(ModalScreen):
+    def __init__(self, achievement, remaining_achievements=None):
+        super().__init__()
+        self.achievement = achievement
+        self.remaining_achievements = remaining_achievements or []
+    
+    def compose(self) -> ComposeResult:
+        with Container(id="achievement-effect-box"):
+            yield Static("[bold yellow]Achievement unlocked[/bold yellow]", id="achievement-effect-title")
+            yield Static(
+                f"[bold]{self.achievement['name']}[/bold]",
+                id="achievement-effect-name",
+            )
+            yield Static(
+                self.achievement["description"],
+                id="achievement-effect-message",
+            )
+    
+    def on_mount(self):
+        self.set_timer(3, self.close_effect)
+
+    def close_effect(self):
+        self.app.pop_screen()
+
+        if len(self.remaining_achievements) > 0:
+            self.app_call_later(
+                lambda: self.app.show_achievement_effect(self.remaining_achievements)
+            )
+
 class StreakEffectScreen(ModalScreen):
     def __init__(self, streak_count):
         super().__init__()
@@ -595,6 +702,9 @@ class StudyStreakApp(App):
 
                     yield Static("", id="leaderboard")
 
+                with TabPane("Achievements", id="achievements-tab"):
+                    yield Static("", id="achievements")
+
                 with TabPane("Settings", id="settings-tab"):
                     yield Static("Settings", id="settings-title")
  
@@ -640,8 +750,10 @@ class StudyStreakApp(App):
                                 yield Checkbox("UI sounds", id="ui-sounds-checkbox")
                                 yield Checkbox("Focus complete sound", id="focus-sound-checkbox")
                                 yield Checkbox("Streak protected sound", id="streak-sound-checkbox")
+                                yield Checkbox("Achievement sound", id="achievement-sound-checkbox")
                                 yield Checkbox("Focus complete notification", id="focus-notification-checkbox")
                                 yield Checkbox("Sync failed notification", id="sync-failed-notification-checkbox")
+                                yield Checkbox("Achievement notification", id="achievement-notification-checkbox")
 
                                 yield Static("", id="sounds-message")
 
@@ -767,6 +879,7 @@ class StudyStreakApp(App):
         timetable_subject_select = self.query_one("#timetable-subject-select", Select)
         today_timetable = self.query_one("#today-timetable", Static)
         timetable_grid = self.query_one("#timetable-grid", Static)
+        achievements = self.query_one("#achievements", Static)
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
@@ -802,6 +915,8 @@ class StudyStreakApp(App):
 
         today_timetable.update(get_today_timetable_display(data))
         timetable_grid.update(get_timetable_grid(data))
+
+        achievements.update(get_achievement_display(data))
 
         self.update_sync_status()
 
@@ -869,11 +984,15 @@ class StudyStreakApp(App):
         self.query_one("#ui-sounds-checkbox", Checkbox).value = sound_settings.get("ui", True)
         self.query_one("#focus-sound-checkbox", Checkbox).value = sound_settings.get("focus_complete", True)
         self.query_one("#streak-sound-checkbox", Checkbox).value = sound_settings.get("streak_protected", True)
+        self.query_one("#achievement-sound-checkbox", Checkbox).value = sound_settings.get("achievement", True)
         self.query_one("#focus-notification-checkbox", Checkbox).value = (
             notification_settings.get("focus_complete", True)
         )
         self.query_one("#sync-failed-notification-checkbox", Checkbox).value = (
             notification_settings.get("sync_failed", True)
+        )
+        self.query_one("#achievement-notification-checkbox", Checkbox).value = (
+            notification_settings.get("achievement", True)
         )
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
@@ -881,11 +1000,13 @@ class StudyStreakApp(App):
             "ui-sounds-checkbox": "ui",
             "focus-sound-checkbox": "focus_complete",
             "streak-sound-checkbox": "streak_protected",
+            "achievement-sound-checkbox": "achievement"
         }
 
         notification_checkbox_map = {
             "focus-notification-checkbox": "focus_complete",
             "sync-failed-notification-checkbox": "sync_failed",
+            "achievement-notification-checkbox": "achievement",
         }
 
         if event.checkbox.id == "light-mode-checkbox":
@@ -995,7 +1116,7 @@ class StudyStreakApp(App):
 
     def play_ui_sound(self):
         self.play_app_sound("ui")
-    
+
     def play_focus_complete_sound(self):
         self.play_app_sound("focus_complete")
 
@@ -1027,6 +1148,61 @@ class StudyStreakApp(App):
             thread=True,
             group="desktop-notifications",
         )
+
+
+    def notify_achievement_unlocked(self, achievement):
+        if not self.notification_is_enabled("achievement"):
+            return
+
+        self.run_worker(
+            partial(
+                show_achievement_notification,
+                achievement["name"],
+                achievement["description"],
+            ),
+            thread=True,
+            group="desktop-notifications",
+        )
+
+    def show_achievement_effect(self, achievements):
+        if len(achievements) == 0:
+            return
+        
+        current_achievement = achievements[0]
+        remaining_achievements = achievements[1:]
+
+        self.play_app_sound("achievement")
+        self.notify_achievement_unlocked(current_achievement)
+
+        self.push_screen(
+            AchievementEffectScreen(
+                current_achievement,
+                remaining_achievements,
+            )
+        )
+
+    def unlock_earned_achievements(self):
+        data = load_data()
+        unlocked_ids = data["achievements"]["unlocked"]
+        new_achievements = []
+
+        for achievement in ACHIEVEMENTS:
+            if achievement["id"] in unlocked_ids:
+                continue
+
+            if achievement["condition"](data):
+                unlocked_ids.append(achievement["id"])
+                new_achievements.append(achievement)
+
+        if len(new_achievements) == 0:
+            return False
+
+        save_data(data)
+        self.update_dashboard()
+
+        self.show_achievement_effect(new_achievements)
+
+        return True
 
     def action_escape_quit(self):
         current_time = datetime.now()
@@ -1145,6 +1321,7 @@ class StudyStreakApp(App):
             "subject": str(self.focus_subject).lower(),
             "minutes": self.focus_minutes,
             "date": str(date.today()),
+            "source": "focus",
         }
  
         data["sessions"].append(session)
@@ -1165,6 +1342,7 @@ class StudyStreakApp(App):
             )
 
         self.update_dashboard()
+        achievement_unlocked = self.unlock_earned_achievements()
  
         updated_data = load_data()
         streak_count = calculate_current_streak(updated_data)
@@ -1183,9 +1361,9 @@ class StudyStreakApp(App):
         )
 
         
-        if not already_studied_today:
+        if not already_studied_today and not achievement_unlocked:
             self.show_streak_effect(streak_count)
-        else:
+        elif not achievement_unlocked:
             self.play_focus_complete_sound()
         self.show_focus_notification(completed_subject, completed_minutes)
 
@@ -1827,6 +2005,7 @@ class StudyStreakApp(App):
             save_data(data)
  
             self.update_dashboard()
+            self.unlock_earned_achievements()
  
             if website == "":
                 self.show_temp_message("#subject-message", f"[green]Added subject: {new_subject}[/green]")
@@ -1999,6 +2178,7 @@ class StudyStreakApp(App):
             save_data(data)
 
             self.update_dashboard()
+            self.unlock_earned_achievements()
 
             subject_select.clear()
             day_select.clear()
@@ -2105,17 +2285,19 @@ class StudyStreakApp(App):
                 "subject": str(subject).lower(),
                 "minutes": minutes,
                 "date": str(date.today()),
+                "source": "manual",
             }
  
             data["sessions"].append(session)
             save_data(data)
  
             self.update_dashboard()
- 
+            achievement_unlocked = self.unlock_earned_achievements()
+
             updated_data = load_data()
             streak_count = calculate_current_streak(updated_data)
- 
-            if not already_studied_today:
+
+            if not already_studied_today and not achievement_unlocked:
                 self.show_streak_effect(streak_count)
  
             self.show_temp_message("#message", f"[green]Logged {minutes} minutes of {subject} study.[/green]")
