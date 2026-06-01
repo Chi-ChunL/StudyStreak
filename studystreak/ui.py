@@ -257,58 +257,63 @@ def get_today_short_name():
     #get today's short day name
     return date.today().strftime("%a")
 
+def get_timetable_end_time(start_time, minutes):
+    start_hour = int(start_time[:2])
+    start_minute = int(start_time[3:])
+
+    total_minutes = start_hour * 60 + start_minute + minutes
+    crosses_midnight = total_minutes >= 24 * 60
+    
+    end_hour = (total_minutes // 60) % 24
+    end_minute = total_minutes % 60
+    end_time = f"{end_hour:02}:{end_minute:02}"
+
+    if crosses_midnight:
+        return f"{end_hour} (+1 day)"
+    
+    return end_time
+ 
 
 def get_timetable_grid(data):
-    #show timetable as weekly grid
     timetable = data.get("timetable", [])
-
     days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    start_hour = 8
-    end_hour = 22
+    today_name = get_today_short_name()
 
-    cell_width = 12
-    time_width = 7
-
-    timetable_slots = {}
+    sessions_by_day = {day: [] for day in days}
 
     for item in timetable:
         day = normalise_timetable_day(item["day"])
-        start_time = item["start_time"]
-        subject = item["subject"]
 
-        hour = int(start_time[:2])
-        key = (day, hour)
-
-        if key not in timetable_slots:
-            timetable_slots[key] = []
-
-        timetable_slots[key].append(subject)
+        if day in sessions_by_day:
+            sessions_by_day[day].append(item)
 
     lines = ["[bold]Weekly Timetable[/bold]", ""]
 
-    header = "Time".ljust(time_width)
-
     for day in days:
-        header += day.center(cell_width)
+        if day == today_name:
+            lines.append(f"[bold cyan]{day} - Today[/bold cyan]")
+        else:
+            lines.append(f"[bold]{day}[/bold]")
 
-    lines.append(header)
-    lines.append("-" * (time_width + cell_width * len(days)))
+        day_sessions = sessions_by_day[day]
+        day_sessions.sort(key=lambda item: item["start_time"])
 
-    for hour in range(start_hour, end_hour + 1):
-        row = f"{hour:02}:00".ljust(time_width)
+        if len(day_sessions) == 0:
+            lines.append("  [dim]No sessions planned[/dim]")
+        else:
+            for item in day_sessions:
+                subject = item["subject"].title()
+                start_time = item["start_time"]
+                minutes = item["minutes"]
+                end_time = get_timetable_end_time(start_time, minutes)
 
-        for day in days:
-            sessions = timetable_slots.get((day, hour), [])
+                lines.append(
+                    f"  {start_time} - {end_time}  "
+                    f"{subject.ljust(20)} "
+                    f"{minutes} min"
+                )
 
-            if len(sessions) == 0:
-                cell_text = ""
-            else:
-                cell_text = ", ".join(sessions)
-                cell_text = cell_text[:cell_width - 1]
-
-            row += cell_text.center(cell_width)
-
-        lines.append(row)
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -477,7 +482,7 @@ class AchievementEffectScreen(ModalScreen):
         self.app.pop_screen()
 
         if len(self.remaining_achievements) > 0:
-            self.app_call_later(
+            self.app.call_later(
                 lambda: self.app.show_achievement_effect(self.remaining_achievements)
             )
 
@@ -2167,9 +2172,52 @@ class StudyStreakApp(App):
             
             data = load_data()
 
+            new_day = normalise_timetable_day(str(day))
+            new_start_minutes = hour * 60 + minute
+            new_end_minutes = new_start_minutes + minutes
+
+            if new_end_minutes > 24 * 60:
+                self.show_temp_message(
+                    "#timetable-message",
+                    "[red]Timetable sessions cannot continue past midnight.[/red]",
+                )
+                return
+            
+            for existing_item in data.get("timetable", []):
+                existing_day = normalise_timetable_day(existing_item["day"])
+
+                if existing_day != new_day:
+                    continue
+
+                existing_start_time = existing_item["start_time"]
+                existing_hour = int(existing_start_time[:2])
+                existing_minute = int(existing_start_time[3:])
+
+                existing_start_minutes = existing_hour * 60 + existing_minute
+                existing_end_time = existing_start_minutes + existing_item["minutes"]
+
+                session_overlap = (
+                    new_start_minutes < existing_end_time
+                    and existing_start_time < new_end_minutes
+                )
+
+                if session_overlap:
+                    existing_subject = existing_item["subject"].title()
+                    existing_end_time = get_timetable_end_time(
+                        existing_start_time,
+                        existing_item["minutes"],
+                    )
+
+                self.show_temp_message(
+                    "#timetable-message",
+                    f"[red]That overlaps with {existing_subject}: "
+                    f"{existing_start_time} - {existing_end_time}.[/red]",
+                )
+                return
+
             timetable_item = {
                 "subject": str(subject).lower(),
-                "day": str(day),
+                "day": new_day,
                 "start_time": start_time,
                 "minutes": minutes,
             }

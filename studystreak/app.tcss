@@ -739,7 +739,7 @@ TabPane {
     border: round yellow;
     background: #111111;
     padding: 1 2;
-    align: center middle
+    align: center middle;
 }
 
 #achievement-effect-title,
