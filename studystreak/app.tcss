@@ -868,6 +868,37 @@ TabPane {
     margin-top: 1;
     margin-bottom: 1;
 }
+
+#manage-timetable-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#manage-timetable-select {
+    margin-bottom: 1;
+}
+
+#manage-timetable-button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#delete-timetable-button {
+    background: #2a1f1f;
+    color: #d6c2c2;
+    border: tall #6b4a4a;
+}
+
+#delete-timetable-button:hover {
+    background: #3a2929;
+    color: white;
+    border: tall #a66a6a;
+}
+
+
 /* #------------------dark mode default override------------------- */
 
 Screen {
@@ -1448,7 +1479,7 @@ Screen.light-mode {
     color: #76501d;
 }
 
-.lightmode #achievement-effect-box {
+.light-mode #achievement-effect-box {
     background: #fbf1dd;
     border: round #9a8567;
     color: #2b2620;
@@ -1457,4 +1488,20 @@ Screen.light-mode {
 .light-mode #achievement-effect-name,
 .light-mode #achievement-effect-message {
     color: #2b2620;
+}
+
+.light-mode #manage-timetable-title {
+    color: #254f6f;
+}
+
+.light-mode #delete-timetable-button {
+    background: #a85c5c;
+    color: #fff8e8;
+    border: round #814242;
+}
+
+.light-mode #delete-timetable-button:hover {
+    background: #8c4949;
+    color: white;
+    border: round #6d3333;
 }

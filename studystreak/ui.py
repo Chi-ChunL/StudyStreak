@@ -257,6 +257,19 @@ def get_today_short_name():
     #get today's short day name
     return date.today().strftime("%a")
 
+def get_timetable_session_options(data):
+    options = []
+
+    for index, item in enumerate(data.get("timetable", [])):
+        subject = item["subject"].title()
+        day = normalise_timetable_day(item["day"])
+        start_time = item["start_time"]
+        end_time = get_timetable_end_time(start_time, item["minutes"])
+
+        label = f"{day} {start_time} - {end_time} | {subject}"
+        options.append((label, str(index)))
+    return options
+
 def get_timetable_end_time(start_time, minutes):
     start_hour = int(start_time[:2])
     start_minute = int(start_time[3:])
@@ -269,7 +282,7 @@ def get_timetable_end_time(start_time, minutes):
     end_time = f"{end_hour:02}:{end_minute:02}"
 
     if crosses_midnight:
-        return f"{end_hour} (+1 day)"
+        return f"{end_time} (+1 day)"
     
     return end_time
  
@@ -666,6 +679,16 @@ class StudyStreakApp(App):
                     yield Static("", id="timetable-message")
                     yield Static("", id="today-timetable")
                     yield Static("", id="timetable-grid")
+                    yield Static("Manage Planned sessions", id="manage-timetable-title")
+
+                    yield Select(
+                        options=[],
+                        id="manage-timetable-select",
+                        prompt="Choose a planned session",
+                    )
+
+                    with Horizontal(id="manage-timetable-button-row"):
+                        yield Button("Delete Selected", id="delete-timetable-button")
 
                 with TabPane("Focus Mode", id="focus-tab"):
                     yield Static("Start a focused study session.", id="focus-title")
@@ -885,6 +908,8 @@ class StudyStreakApp(App):
         today_timetable = self.query_one("#today-timetable", Static)
         timetable_grid = self.query_one("#timetable-grid", Static)
         achievements = self.query_one("#achievements", Static)
+        manage_timetable_select = self.query_one("#manage-timetable-select", Select)
+
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
@@ -917,6 +942,9 @@ class StudyStreakApp(App):
 
         timetable_subject_select.set_options(get_subject_options(data))
         timetable_subject_select.clear()
+
+        manage_timetable_select.set_options(get_timetable_session_options(data))
+        manage_timetable_select.clear()
 
         today_timetable.update(get_today_timetable_display(data))
         timetable_grid.update(get_timetable_grid(data))
@@ -1967,7 +1995,7 @@ class StudyStreakApp(App):
             if weekly_goal <= 0:
                 self.show_temp_message("#settings-message", "[red]Weekly goal must be more than 0.[/red]")
                 return
- 
+
             data = load_data()
             data["weekly_goal"] = weekly_goal
             save_data(data)
@@ -2115,6 +2143,39 @@ class StudyStreakApp(App):
             timetable_form_panel.display = False
             return
 
+        if event.button.id == "delete-timetable-button":
+            manage_timetable_select = self.query_one("#manage-timetable-select", Select)
+            selected_index = manage_timetable_select.value
+
+            if is_blank_select_value(selected_index):
+                self.show_temp_message(
+                    "#timetable-message",
+                    "[yellow]Please choose a planned session to delete.[/yellow]",
+                )
+                return
+
+            data = load_data()
+            selected_index = int(selected_index)
+
+            if selected_index < 0 or selected_index >= len(data["timetable"]):
+                self.show_temp_message(
+                    "#timetable-message",
+                    "[red]That planned session could not be found.[/red]",
+                )
+                self.update_dashboard()
+                return
+
+            deleted_item = data["timetable"].pop(selected_index)
+            save_data(data)
+            self.update_dashboard()
+
+            self.show_temp_message(
+                "#timetable-message",
+                f"[yellow]Deleted {deleted_item['subject'].title()} "
+                f"on {deleted_item['day']} at {deleted_item['start_time']}.[/yellow]",
+            )
+            return
+
         if event.button.id == "add-timetable-button":
             #add timetable session
             subject_select = self.query_one("#timetable-subject-select", Select)
@@ -2194,26 +2255,26 @@ class StudyStreakApp(App):
                 existing_minute = int(existing_start_time[3:])
 
                 existing_start_minutes = existing_hour * 60 + existing_minute
-                existing_end_time = existing_start_minutes + existing_item["minutes"]
+                existing_end_minutes = existing_start_minutes + existing_item["minutes"]
 
-                session_overlap = (
-                    new_start_minutes < existing_end_time
-                    and existing_start_time < new_end_minutes
+                sessions_overlap = (
+                    new_start_minutes < existing_end_minutes
+                    and existing_start_minutes < new_end_minutes
                 )
 
-                if session_overlap:
+                if sessions_overlap:
                     existing_subject = existing_item["subject"].title()
                     existing_end_time = get_timetable_end_time(
                         existing_start_time,
                         existing_item["minutes"],
                     )
 
-                self.show_temp_message(
-                    "#timetable-message",
-                    f"[red]That overlaps with {existing_subject}: "
-                    f"{existing_start_time} - {existing_end_time}.[/red]",
-                )
-                return
+                    self.show_temp_message(
+                        "#timetable-message",
+                        f"[red]That overlaps with {existing_subject}: "
+                        f"{existing_start_time} - {existing_end_time}.[/red]",
+                    )
+                    return
 
             timetable_item = {
                 "subject": str(subject).lower(),
