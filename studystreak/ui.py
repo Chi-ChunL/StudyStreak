@@ -573,6 +573,7 @@ class StudyStreakApp(App):
     temp_message_versions = {}
     leaderboard_period = "all"
     last_notified_sync_error = None
+    editing_timetable_index = None
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -688,6 +689,7 @@ class StudyStreakApp(App):
                     )
 
                     with Horizontal(id="manage-timetable-button-row"):
+                        yield Button("Edit Selected", id="edit-timetable-button")
                         yield Button("Delete Selected", id="delete-timetable-button")
 
                 with TabPane("Focus Mode", id="focus-tab"):
@@ -2133,6 +2135,12 @@ class StudyStreakApp(App):
         
         if event.button.id == "show-timetable-form-button":
             #show timetable form
+            self.editing_timetable_index = None
+            self.query_one("#add-timetable-button", Button).label = "Save Session"
+            self.query_one("#timetable-subject-select", Select).clear()
+            self.query_one("#timetable-day-select", Select).clear()
+            self.query_one("#timetable-start-input", Input).value = ""
+            self.query_one("#timetable-minutes-input", Input).value = ""
             timetable_form_panel = self.query_one("#timetable-form-panel")
             timetable_form_panel.display = True
             return
@@ -2141,6 +2149,44 @@ class StudyStreakApp(App):
             #hide timetable form
             timetable_form_panel = self.query_one("#timetable-form-panel")
             timetable_form_panel.display = False
+            self.editing_timetable_index = None
+            self.query_one("#add-timetable-button", Button).label = "Save Session"
+            return
+
+        if event.button.id == "edit-timetable-button":
+            select = self.query_one("#manage-timetable-select", Select)
+            selected_index = select.value
+
+            if is_blank_select_value(selected_index):
+                self.show_temp_message(
+                    "#timetable-message",
+                    "[yellow]Please choose a planned session to edit.[/yellow]",
+                )
+                return
+
+            self.editing_timetable_index = int(selected_index)
+            data = load_data()
+
+            if (
+                self.editing_timetable_index < 0
+                or self.editing_timetable_index >= len(data["timetable"])
+            ):
+                self.show_temp_message(
+                    "#timetable-message",
+                    "[red]That planned session could not be found.[/red]",
+                )
+                self.editing_timetable_index = None
+                self.update_dashboard()
+                return
+
+            item = data["timetable"][self.editing_timetable_index]
+
+            self.query_one("#timetable-subject-select", Select).value = item["subject"]
+            self.query_one("#timetable-day-select", Select).value = item["day"]
+            self.query_one("#timetable-start-input", Input).value = item["start_time"]
+            self.query_one("#timetable-minutes-input", Input).value = str(item["minutes"])
+            self.query_one("#add-timetable-button", Button).label = "Save Changes"
+            self.query_one("#timetable-form-panel").display = True
             return
 
         if event.button.id == "delete-timetable-button":
@@ -2167,6 +2213,9 @@ class StudyStreakApp(App):
 
             deleted_item = data["timetable"].pop(selected_index)
             save_data(data)
+            self.editing_timetable_index = None
+            self.query_one("#add-timetable-button", Button).label = "Save Session"
+            self.query_one("#timetable-form-panel").display = False
             self.update_dashboard()
 
             self.show_temp_message(
@@ -2244,7 +2293,10 @@ class StudyStreakApp(App):
                 )
                 return
             
-            for existing_item in data.get("timetable", []):
+            for existing_index, existing_item in enumerate(data.get("timetable", [])):
+                if existing_index == self.editing_timetable_index:
+                    continue
+
                 existing_day = normalise_timetable_day(existing_item["day"])
 
                 if existing_day != new_day:
@@ -2283,7 +2335,26 @@ class StudyStreakApp(App):
                 "minutes": minutes,
             }
 
-            data["timetable"].append(timetable_item)
+            was_editing = self.editing_timetable_index is not None
+
+            if was_editing:
+                if (
+                    self.editing_timetable_index < 0
+                    or self.editing_timetable_index >= len(data["timetable"])
+                ):
+                    self.show_temp_message(
+                        "#timetable-message",
+                        "[red]That planned session could not be found.[/red]",
+                    )
+                    self.editing_timetable_index = None
+                    self.query_one("#add-timetable-button", Button).label = "Save Session"
+                    self.update_dashboard()
+                    return
+
+                data["timetable"][self.editing_timetable_index] = timetable_item
+            else:
+                data["timetable"].append(timetable_item)
+
             save_data(data)
 
             self.update_dashboard()
@@ -2294,9 +2365,13 @@ class StudyStreakApp(App):
             start_input.value = ""
             minutes_input.value = ""
 
+            action = "Updated" if was_editing else "Added"
+            self.editing_timetable_index = None
+            self.query_one("#add-timetable-button", Button).label = "Save Session"
+
             self.show_temp_message(
                 "#timetable-message",
-                f"[green]Added {subject} on {day} at {start_time}.[/green]",
+                f"[green]{action} {subject} on {day} at {start_time}.[/green]",
             )
 
             timetable_form_panel = self.query_one("#timetable-form-panel")
