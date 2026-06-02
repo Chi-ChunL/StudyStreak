@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -20,6 +20,9 @@ from studystreak.api_client import upload_profile_data
 
 
 DATA_FILE = Path("study_data.json")
+_SYNC_LOCK = Lock()
+_latest_sync_snapshot = None
+_sync_worker_running = False
 
 
 def get_default_data():
@@ -181,14 +184,63 @@ def save_data(data):
         save_session_data(data)
         sync_profile_data_in_background(data)
         return
-    
+
     save_legacy_data(data)
 
 def sync_profile_data_in_background(data):
     #keep local saves fast even when the server is slow or offline
+    global _latest_sync_snapshot
+    global _sync_worker_running
+
     snapshot = deepcopy(data)
-    thread = Thread(target=sync_profile_data, args=(snapshot,), daemon=True)
+
+    with _SYNC_LOCK:
+        _latest_sync_snapshot = snapshot
+
+        if _sync_worker_running:
+            return
+
+        _sync_worker_running = True
+
+    thread = Thread(target=run_sync_worker, daemon=True)
     thread.start()
+
+def run_sync_worker():
+    #upload snapshot in order while skipping unecesaary queued versions
+    global _latest_sync_snapshot
+    global _sync_worker_running
+
+    while True:
+        with _SYNC_LOCK:
+            snapshot = _latest_sync_snapshot
+            _latest_sync_snapshot = None
+
+            if snapshot is None:
+                _sync_worker_running = False
+                return
+
+        try:
+            sync_profile_data(snapshot)
+        except Exception:
+            pass
+
+def update_sync_result_if_current(data, synced_at=None, error_message=None):
+    #ignore results from an upload if a newer local save already exists
+    try:
+        current_data = get_session_data()
+    except RuntimeError:
+        return
+
+    current_sync = current_data.get("sync", {})
+
+    if current_sync.get("last_local_update") != data["sync"]["last_local_update"]:
+        return
+
+    if synced_at is not None:
+        current_data["sync"]["last_cloud_sync"] = synced_at
+
+    current_data["sync"]["last_sync_error"] = error_message
+    save_session_data(current_data)
 
 
 def sync_profile_data(data):
@@ -196,9 +248,10 @@ def sync_profile_data(data):
     token = get_server_token()
 
     if token is None:
-        current_data = get_session_data()
-        current_data["sync"]["last_sync_error"] = "Not logged in to server."
-        save_session_data(current_data)
+        update_sync_result_if_current(
+            data,
+            error_message="Not logged in to server.",
+        )
         return
 
     try:
@@ -208,16 +261,15 @@ def sync_profile_data(data):
         encrypted_profile_data = encrypt_profile_data(data, username, password)
         upload_profile_data(token, encrypted_profile_data)
 
-        synced_at = get_utc_now_text()
-        current_data = get_session_data()
-        current_sync = current_data.get("sync", {})
+    except Exception as error:
+        update_sync_result_if_current(
+            data,
+            error_message=str(error),
+        )
+        return
 
-        if current_sync.get("last_local_update") == data["sync"]["last_local_update"]:
-            current_data["sync"]["last_cloud_sync"] = synced_at
-            current_data["sync"]["last_sync_error"] = None
-            save_session_data(current_data)
-
-    except (RuntimeError, ValueError) as error:
-        current_data = get_session_data()
-        current_data["sync"]["last_sync_error"] = str(error)
-        save_session_data(current_data)
+    update_sync_result_if_current(
+        data,
+        synced_at=get_utc_now_text(),
+        error_message=None,
+    )

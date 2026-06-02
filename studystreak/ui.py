@@ -1,7 +1,7 @@
 import webbrowser
 from datetime import date, timedelta, datetime
 from functools import partial
- 
+
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -16,11 +16,11 @@ from textual.widgets import (
     Select,
     Checkbox,
 )
- 
-from studystreak.storage import load_data, save_data
+
+from studystreak.storage import load_data, repair_data, save_data
 from studystreak.accounts import create_account, list_accounts, login_account, logout_account
 from studystreak.accounts import normalise_username, validate_password, validate_username
-from studystreak.session import set_session, clear_session, get_session_username, set_server_token, get_server_token
+from studystreak.session import set_session, clear_session, get_session_username, save_session_data, set_server_token, get_server_token
 from studystreak.auth_cache import (
     save_remembered_login,
     get_remembered_password,
@@ -1507,9 +1507,12 @@ class StudyStreakApp(App):
                 server_token,
             )
 
-            if cloud_data is not None:
-                set_session(remembered_username, remembered_password, cloud_data)
-                save_data(cloud_data)
+            self.use_newest_profile_after_login(
+                remembered_username,
+                remembered_password,
+                private_data,
+                cloud_data,
+            )
 
         except ValueError:
             self.show_temp_message(
@@ -1571,6 +1574,53 @@ class StudyStreakApp(App):
             return None
         
         return cloud_data
+
+    def use_newest_profile_after_login(
+            self,
+            username,
+            password,
+            local_data,
+            cloud_data,
+            prefer_cloud_when_equal=False,
+    ):
+        #keep whichever profile changed most recently
+        local_data = repair_data(local_data)
+
+        if cloud_data is None:
+            set_session(username, password, local_data)
+            save_data(local_data)
+            return local_data
+
+        cloud_data = repair_data(cloud_data)
+
+        local_updated_at = local_data["sync"].get("last_local_update")
+        cloud_updated_at = cloud_data["sync"].get("last_local_update")
+
+        cloud_is_newer = (
+            cloud_updated_at is not None
+            and (
+                local_updated_at is None
+                or cloud_updated_at > local_updated_at
+            )
+        )
+
+        if prefer_cloud_when_equal and cloud_updated_at == local_updated_at:
+            cloud_is_newer = True
+
+        if cloud_is_newer:
+
+            cloud_data["sync"]["last_cloud_sync"] = cloud_updated_at
+            cloud_data["sync"]["last_sync_error"] = None
+            set_session(username, password, cloud_data)
+            save_session_data(cloud_data)
+            return cloud_data
+
+        set_session(username, password, local_data)
+
+        if local_updated_at != cloud_updated_at:
+            save_data(local_data)
+
+        return local_data
 
     def show_main_app(self):
         #show main app after login
@@ -1692,9 +1742,12 @@ class StudyStreakApp(App):
 
                     cloud_data = self.sync_profile_from_server(username, password, server_token)
 
-                    if cloud_data is not None:
-                        set_session(username, password, cloud_data)
-                        save_data(cloud_data)
+                    self.use_newest_profile_after_login(
+                        username,
+                        password,
+                        private_data,
+                        cloud_data,
+                    )
 
                 except ValueError:
                     self.show_temp_message(
@@ -1726,12 +1779,13 @@ class StudyStreakApp(App):
 
                 private_data = login_account(username, password)
 
-                if cloud_data is not None:
-                    private_data = cloud_data
-
-                set_session(username, password, private_data)
-                save_data(private_data)
-                set_server_token(server_token)
+                self.use_newest_profile_after_login(
+                    username,
+                    password,
+                    private_data,
+                    cloud_data,
+                    prefer_cloud_when_equal=True,
+                )
 
                 self.show_temp_message(
                     "#login-message",
