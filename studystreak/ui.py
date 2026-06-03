@@ -566,6 +566,8 @@ class StudyStreakApp(App):
  
     last_escape_time = None
     focus_timer = None
+    sync_status_timer = None
+    loading_settings = False
     focus_seconds_left = 0
     focus_subject = None
     focus_minutes = 0
@@ -1012,6 +1014,8 @@ class StudyStreakApp(App):
         self.query_one("#light-mode-checkbox", Checkbox).value = theme == "light"
     
     def update_sound_settings_panel(self):
+        self.loading_settings = True
+        
         data = load_data()
         sound_settings = data.get("sound_settings", {})
         notification_settings = data.get("notification-settings", {})
@@ -1029,8 +1033,15 @@ class StudyStreakApp(App):
         self.query_one("#achievement-notification-checkbox", Checkbox).value = (
             notification_settings.get("achievement", True)
         )
-
+        self.set_timer(
+            0.1,
+            lambda: setattr(self, "loading_settings", False),
+        )
+        
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if self.loading_settings:
+            return
+        
         checkbox_sound_map = {
             "ui-sounds-checkbox": "ui",
             "focus-sound-checkbox": "focus_complete",
@@ -1274,7 +1285,8 @@ class StudyStreakApp(App):
             return
  
         original_session_count = len(data["sessions"])
- 
+        original_timetable_count = len(data.get("timetable", []))
+
         data["subjects"].remove(subject)
  
         if subject in data["subject_websites"]:
@@ -1284,9 +1296,14 @@ class StudyStreakApp(App):
             session for session in data["sessions"]
             if session["subject"] != subject
         ]
+        data["timetable"] = [
+            item for item in data.get("timetable", [])
+            if item["subject"] != subject
+        ]
  
         deleted_session_count = original_session_count - len(data["sessions"])
- 
+        deleted_timetable_count = original_timetable_count - len(data["timetable"])
+
         save_data(data)
         self.update_dashboard()
  
@@ -1295,7 +1312,8 @@ class StudyStreakApp(App):
         self.show_temp_message(
             "#delete-subject-message",
             f"[yellow]Deleted subject: {subject}. "
-            f"Removed {deleted_session_count} linked session(s).[/yellow]",
+            f"Removed {deleted_session_count} linked session(s) "
+            f"and {deleted_timetable_count} timetable item(s).[/yellow]",
         )
  
     def start_focus_session(self, subject, minutes):
@@ -1622,6 +1640,28 @@ class StudyStreakApp(App):
 
         return local_data
 
+
+    def stop_session_timers(self):
+        #stop background timer when leaving the logged in app
+        if self.sync_status_timer is not None:
+            self.sync_status_timer.stop()
+            self.sync_status_timer = None
+
+        if self.focus_timer is not None:
+            self.focus_timer.stop()
+            self.focus_timer = None
+
+        self.focus_seconds_left = 0
+        self.focus_subject = None
+        self.focus_minutes = 0
+        self.last_notified_sync_error = None
+
+        focus_timer = self.query_one("#focus-timer", Static)
+        focus_timer.update("")
+        focus_timer.display = False
+
+
+
     def show_main_app(self):
         #show main app after login
         login_container = self.query_one("#login-container")
@@ -1639,7 +1679,8 @@ class StudyStreakApp(App):
         self.apply_theme()
         self.update_server_status()
         self.update_sync_status()
-        self.set_interval(2, self.update_sync_status)
+        if self.sync_status_timer is None:
+            self.sync_status_timer = self.set_interval(2, self.update_sync_status)
         self.update_dashboard()
         self.refresh_leaderboard()
 
@@ -1702,6 +1743,8 @@ class StudyStreakApp(App):
             password_input = self.query_one("#login-password-input", Input)
             login_message = self.query_one("#login-message", Static)
 
+
+            self.stop_session_timers()
             logout_account()
             clear_session()
             clear_remembered_login()
