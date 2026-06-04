@@ -1,0 +1,57 @@
+body {
+    width: 260px;
+    margin: 0;
+    background: #f3e7cf;
+    color:#2c211c;
+    font-family: monospace;
+}
+
+main {
+    padding: 16px;
+}
+
+h1 {
+    color: #174a7c;
+    font-size: 18px;
+    text-align: center;
+}
+
+label {
+    display: block;
+    margin-top: 14px;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+input[type="time"] {
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px;
+    border: 2px solid #9b8061;
+    background: #fff8e8;
+    color: #2c211c;
+    font-family: monospace;
+}
+
+
+button {
+    width: 100%;
+    margin-top: 12px;
+    padding: 9px;
+    border: 2px solid #174a7c;
+    background: #6f9fbe;
+    color: #111;
+    font-family: monospace;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#status {
+    min-height: 20px;
+    color: #00706f;
+}
+

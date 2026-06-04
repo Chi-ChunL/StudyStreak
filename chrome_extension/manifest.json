@@ -1,0 +1,17 @@
+{
+    "manifest_version": 3,
+    "name": "StudyStreak Companion",
+    "version": "0.1.0",
+    "description": "Daily study reminders for StudyStreak",
+    "permissions": ["alarms", "notifications", "storage"],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "icons": {
+        "128": "icon128.png"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "StudyStreak"
+    }
+}
