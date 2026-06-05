@@ -1,8 +1,8 @@
 body {
-    width: 260px;
+    width: 300px;
     margin: 0;
     background: #f3e7cf;
-    color:#2c211c;
+    color: #2c211c;
     font-family: monospace;
 }
 
@@ -28,6 +28,7 @@ label {
 }
 
 input[type="time"] {
+    box-sizing: border-box;
     width: 100%;
     margin-top: 6px;
     padding: 8px;
@@ -37,6 +38,29 @@ input[type="time"] {
     font-family: monospace;
 }
 
+section {
+    margin-top: 18px;
+    border-top: 2px solid #d4bd95;
+    padding-top: 12px;
+}
+
+h2 {
+    color: #174a7c;
+    font-size: 15px;
+    text-align: center;
+}
+
+textarea {
+    box-sizing: border-box;
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px;
+    border: 2px solid #9b8061;
+    background: #fff8e8;
+    color: #2c211c;
+    font-family: monospace;
+    resize: vertical;
+}
 
 button {
     width: 100%;
@@ -48,6 +72,11 @@ button {
     font-family: monospace;
     font-weight: bold;
     cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 #status {
