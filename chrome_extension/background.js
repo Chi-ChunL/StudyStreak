@@ -318,6 +318,16 @@ chrome.idle.onStateChanged.addListener(() => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     async function handleMessage() {
+        
+        if (message.type === "clearFocusHistory") {
+            await chrome.storage.local.set({
+                focusHistory: [],
+                lastCompletedFocusSession: null
+            });
+
+            return { ok: true};
+        }
+
         if (message.type === "getCompanionState") {
             const settings = await getSettings();
             const summary = settings.focusActive

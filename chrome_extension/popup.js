@@ -13,6 +13,8 @@ const focusDomain = document.querySelector("#focus-domain");
 const lastFocusSummary = document.querySelector("#last-focus-summary");
 const copySummaryButton = document.querySelector("#copy-summary-button");
 const focusHistory = document.querySelector("#focus-history");
+const clearHistoryButton = document.querySelector("#clear-history-button")
+
 
 let latestCompletedFocusSession = null;
 
@@ -203,6 +205,8 @@ async function copySummary() {
 
     statusText.textContent = "Summary copied.";
 }
+
+async function clearFocusHistory() 
 
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
