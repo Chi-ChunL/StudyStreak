@@ -7,7 +7,8 @@ const DEFAULT_STATS = {
     distractedSeconds: 0,
     idleSeconds: 0,
     lastDomain: "none",
-    lastCategory: "idle"
+    lastCategory: "idle",
+    distractedDomains: {}
 };
 
 const DEFAULT_SETTINGS = {
@@ -17,7 +18,9 @@ const DEFAULT_SETTINGS = {
     focusActive: false,
     focusStartedAt: null,
     focusLastCheckedAt: null,
-    focusStats: DEFAULT_STATS
+    focusStats: DEFAULT_STATS,
+    lastCompletedFocusSession: null,
+    focusHistory: []
 };
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
@@ -33,8 +36,15 @@ async function getSettings() {
             : DEFAULT_SETTINGS.allowedDomains,
         focusStats: {
             ...DEFAULT_STATS,
-            ...(saved.focusStats || {})
-        }
+            ...(saved.focusStats || {}),
+            distractedDomains: {
+                ...DEFAULT_STATS.distractedDomains,
+                ...((saved.focusStats || {}).distractedDomains || {})
+            }
+        },
+        focusHistory: Array.isArray(saved.focusHistory)
+            ? saved.focusHistory
+            : []
     };
 }
 
@@ -102,6 +112,16 @@ async function getCurrentFocusCategory(settings) {
     return { category: "distracted", domain };
 }
 
+function getTopDistractedDomain(stats) {
+    const entries = Object.entries(stats.distractedDomains || {});
+
+    if (entries.length === 0) {
+        return "none";
+    }
+
+    return entries.sort((first, second) => second[1] - first[1])[0][0];
+}
+
 function getFocusSummary(settings) {
     const stats = {
         ...DEFAULT_STATS,
@@ -110,11 +130,13 @@ function getFocusSummary(settings) {
 
     const totalSeconds = stats.focusedSeconds + stats.distractedSeconds + stats.idleSeconds;
     const score = totalSeconds > 0 ? Math.round((stats.focusedSeconds / totalSeconds) * 100): 0;
+    const topDistractedDomain = getTopDistractedDomain(stats);
 
     return {
         focusActive: settings.focusActive,
         score,
         totalSeconds,
+        topDistractedDomain,
         ...stats
     };
 } 
@@ -139,6 +161,10 @@ async function recordFocusElapsed() {
             stats.focusedSeconds += elapsedSeconds;
         } else if (stats.lastCategory === "distracted") {
             stats.distractedSeconds += elapsedSeconds;
+
+            if (stats.lastDomain && stats.lastDomain !== "browser page") {
+                stats.distractedDomains[stats.lastDomain] = (stats.distractedDomains[stats.lastDomain] || 0) + elapsedSeconds;
+            }
         } else {
             stats.idleSeconds += elapsedSeconds;
         }
@@ -190,20 +216,27 @@ async function startFocus() {
 }
 
 async function stopFocus() {
-    await recordFocusElapsed();
+    const completedSummary = {
+        ...(await recordFocusElapsed()),
+        focusActive: false,
+        completedAt: new Date().toISOString()
+    };
 
     const settings = await getSettings();
+    const focusHistory = [
+        completedSummary,
+        ...(settings.focusHistory || [])
+    ].slice(0,3);
 
     await chrome.alarms.clear(FOCUS_TICK_ALARM);
     await chrome.storage.local.set({
         focusActive: false,
-        focusLastCheckedAt: null
+        focusLastCheckedAt: null,
+        lastCompletedFocusSession: completedSummary,
+        focusHistory
     });
 
-    return getFocusSummary({
-        ...settings,
-        focusActive: false
-    });
+    return completedSummary;
 }
 
 function getNextReminderTime(timeValue) {

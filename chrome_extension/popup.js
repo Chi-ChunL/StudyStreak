@@ -10,6 +10,11 @@ const focusState = document.querySelector("#focus-state");
 const focusScore = document.querySelector("#focus-score");
 const focusTime = document.querySelector("#focus-time");
 const focusDomain = document.querySelector("#focus-domain");
+const lastFocusSummary = document.querySelector("#last-focus-summary");
+const copySummaryButton = document.querySelector("#copy-summary-button");
+const focusHistory = document.querySelector("#focus-history");
+
+let latestCompletedFocusSession = null;
 
 const EMPTY_SUMMARY = {
     focusActive: false,
@@ -18,7 +23,8 @@ const EMPTY_SUMMARY = {
     distractedSeconds: 0,
     idleSeconds: 0,
     lastDomain: "none",
-    lastCategory: "idle"
+    lastCategory: "idle",
+    topDistractedDomain: "none"
 };
 
 function parseDomains(value) {
@@ -38,6 +44,51 @@ function formatSeconds(seconds) {
     }
 
     return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatFocusSummaryText(summary) {
+    return [
+        "StudyStreak focus summary",
+        `Score: ${summary.score}%`,
+        `Focused: ${formatSeconds(summary.focusedSeconds)}`,
+        `Distracted: ${formatSeconds(summary.distractedSeconds)}`,
+        `Idle: ${formatSeconds(summary.idleSeconds)}`,
+        `Top distraction: ${summary.topDistractedDomain || "none"}`
+    ].join("\n");
+    
+}
+
+function renderCompletedSummary(summary) {
+    latestCompletedFocusSession = summary || null;
+    copySummaryButton.disabled = !latestCompletedFocusSession;
+
+    if (!latestCompletedFocusSession) {
+        lastFocusSummary.textContent = "No completed focus session yet.";
+        return;
+    }
+
+    lastFocusSummary.textContent = formatFocusSummaryText(latestCompletedFocusSession);
+}
+
+function renderFocusHistory(history) {
+    const recentHistory = Array.isArray(history) ? history : [];
+
+    if (recentHistory.length === 0) {
+        focusHistory.textContent = "No focus history yet."
+        return;
+    }
+
+    focusHistory.innerHTML = recentHistory
+        .map((session) => {
+            return `
+                <div class="history-item">
+                    <strong>${session.score}%</strong>
+                    <span>${formatSeconds(session.focusedSeconds)} focused</span>
+                    <span>Top distraction: ${session.topDistractedDomain || "none"}</span>
+                </div>
+            `;
+        })
+        .join("");
 }
 
 function renderFocusSummary(summary) {
@@ -75,6 +126,8 @@ async function loadSettings() {
         allowedDomains.value = state.settings.allowedDomains.join("\n");
 
         renderFocusSummary(state.summary);
+        renderCompletedSummary(state.settings.lastCompletedFocusSession);
+        renderFocusHistory(state.settings.focusHistory);
     } catch (error) {
         console.error(error);
         renderFocusSummary(EMPTY_SUMMARY);
@@ -122,6 +175,12 @@ async function stopFocus() {
     });
 
     renderFocusSummary(summary);
+    renderCompletedSummary(summary);
+    const state = await chrome.runtime.sendMessage({
+        type: "getCompanionState"
+    });
+
+    renderFocusHistory(state.settings.focusHistory);
     statusText.textContent = "Focus stopped.";
 }
 
@@ -133,10 +192,23 @@ async function refreshFocusStatus() {
     renderFocusSummary(summary);
 }
 
+async function copySummary() {
+    if (!latestCompletedFocusSession) {
+        return;
+    }    
+
+    await navigator.clipboard.writeText(
+        formatFocusSummaryText(latestCompletedFocusSession)
+    );
+
+    statusText.textContent = "Summary copied.";
+}
+
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
 startFocusButton.addEventListener("click", startFocus);
 stopFocusButton.addEventListener("click", stopFocus);
+copySummaryButton.addEventListener("click", copySummary);
 
 setInterval(refreshFocusStatus, 2000);
 

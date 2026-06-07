@@ -84,3 +84,30 @@ button:disabled {
     color: #00706f;
 }
 
+#last-focus-summary {
+    white-space: pre-line;
+    margin-top: 12px;
+    padding: 10px;
+    border: 2px solid #d4bd95;
+    background: #fff8e8;
+    color: #2c211c;
+    line-height: 1.45;
+}
+
+h3 {
+    color: #174a7c;
+    font-size: 13px;
+    margin-top: 14px;
+}
+
+.history-item {
+    margin-top: 8px;
+    padding: 8px;
+    border: 2px solid #d4bd95;
+    background: #fff8e8;
+    line-height: 1.4;
+}
+
+.history-item span {
+    display: block;
+}
