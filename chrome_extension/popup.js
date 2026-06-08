@@ -13,8 +13,8 @@ const focusDomain = document.querySelector("#focus-domain");
 const lastFocusSummary = document.querySelector("#last-focus-summary");
 const copySummaryButton = document.querySelector("#copy-summary-button");
 const focusHistory = document.querySelector("#focus-history");
-const clearHistoryButton = document.querySelector("#clear-history-button")
-
+const clearHistoryButton = document.querySelector("#clear-history-button");
+const copyJsonButton = document.querySelector("#copy-json-button");
 
 let latestCompletedFocusSession = null;
 
@@ -57,12 +57,12 @@ function formatFocusSummaryText(summary) {
         `Idle: ${formatSeconds(summary.idleSeconds)}`,
         `Top distraction: ${summary.topDistractedDomain || "none"}`
     ].join("\n");
-    
 }
 
 function renderCompletedSummary(summary) {
     latestCompletedFocusSession = summary || null;
     copySummaryButton.disabled = !latestCompletedFocusSession;
+    copyJsonButton.disabled = !latestCompletedFocusSession;
 
     if (!latestCompletedFocusSession) {
         lastFocusSummary.textContent = "No completed focus session yet.";
@@ -76,7 +76,7 @@ function renderFocusHistory(history) {
     const recentHistory = Array.isArray(history) ? history : [];
 
     if (recentHistory.length === 0) {
-        focusHistory.textContent = "No focus history yet."
+        focusHistory.textContent = "No focus history yet.";
         return;
     }
 
@@ -206,13 +206,50 @@ async function copySummary() {
     statusText.textContent = "Summary copied.";
 }
 
-async function clearFocusHistory() 
+function buildFocusSummaryJson(summary) {
+    return {
+        source: "chrome_extension",
+        score: summary.score,
+        focused_seconds: summary.focusedSeconds,
+        distracted_seconds: summary.distractedSeconds,
+        idle_seconds: summary.idleSeconds,
+        top_distracted_domain: summary.topDistractedDomain || "none",
+        completed_at: summary.completedAt
+    };
+}
+
+async function copySummaryJson() {
+    if (!latestCompletedFocusSession) {
+        return;
+    }
+    
+    await navigator.clipboard.writeText(
+        JSON.stringify(
+            buildFocusSummaryJson(latestCompletedFocusSession),
+            null,
+            2
+        )
+    );
+    statusText.textContent = "JSON copied.";
+}
+
+async function clearFocusHistory() {
+    await chrome.runtime.sendMessage({
+        type: "clearFocusHistory"
+    });
+
+    renderCompletedSummary(null);
+    renderFocusHistory([]);
+    statusText.textContent = "Focus history cleared.";
+}
 
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
 startFocusButton.addEventListener("click", startFocus);
 stopFocusButton.addEventListener("click", stopFocus);
 copySummaryButton.addEventListener("click", copySummary);
+copyJsonButton.addEventListener("click", copySummaryJson);
+clearHistoryButton.addEventListener("click", clearFocusHistory);
 
 setInterval(refreshFocusStatus, 2000);
 

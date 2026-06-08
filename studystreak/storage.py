@@ -28,6 +28,7 @@ _sync_worker_running = False
 def get_default_data():
     return {
         "sessions": [],
+        "focus_quality_sessions": [],
         "weekly_goal": 300,
         "subjects": [],
         "subject_websites": {},
@@ -65,6 +66,12 @@ def repair_data(data):
     #repair missing data keys
     if "sessions" not in data:
         data["sessions"] = []
+    
+    if "focus_quality_sessions" not in data:
+        data["focus_quality_sessions"] = []
+    
+    if not isinstance(data["focus_quality_sessions"], list):
+        data["focus_quality_sessions"] = []
 
     if "weekly_goal" not in data:
         data["weekly_goal"] = 300
@@ -186,6 +193,79 @@ def save_data(data):
         return
 
     save_legacy_data(data)
+
+def normalise_focus_quality_session(raw_summary):
+    if not isinstance(raw_summary, dict):
+        raise ValueError("Focus summary must be a JSON object.")
+
+    if raw_summary.get("source") != "chrome_extension":
+        raise ValueError("Focus summary must come from the Chrome extension.")
+
+    completed_at = str(raw_summary.get("completed_at", "")).strip()
+    if completed_at == "":
+        raise ValueError("Focus summary is missing completed_at.")
+
+    try:
+        datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("Focus summary has an invalid completed_at date.") from error
+
+    try:
+        session = {
+            "source": "chrome_extension",
+            "score": int(raw_summary.get("score", 0)),
+            "focused_seconds": int(raw_summary.get("focused_seconds", 0)),
+            "distracted_seconds": int(raw_summary.get("distracted_seconds", 0)),
+            "idle_seconds": int(raw_summary.get("idle_seconds", 0)),
+            "top_distracted_domain": str(
+                raw_summary.get("top_distracted_domain", "none")
+            ),
+            "completed_at": completed_at,
+            "imported_at": get_utc_now_text(),
+        }
+    except (TypeError, ValueError) as error:
+        raise ValueError("Focus summary has invalid number fields.") from error
+
+    if session["score"] < 0 or session["score"] > 100:
+        raise ValueError("Focus score must be between 0 and 100.")
+
+    for key in ["focused_seconds", "distracted_seconds", "idle_seconds"]:
+        if session[key] < 0:
+            raise ValueError("Focus times cannot be negative.")
+
+    return session
+
+
+def save_focus_quality_session(raw_summary):
+    data = load_data()
+    session = normalise_focus_quality_session(raw_summary)
+
+    existing_sessions = data.get("focus_quality_sessions", [])
+    data["focus_quality_sessions"] = [
+        session,
+        *[
+            existing
+            for existing in existing_sessions
+            if existing.get("completed_at") != session["completed_at"]
+        ],
+    ][:20]
+
+    save_data(data)
+    return session
+
+
+def save_focus_quality_json(raw_text):
+    raw_text = raw_text.strip()
+
+    if raw_text == "":
+        raise ValueError("Paste a focus summary JSON first.")
+
+    try:
+        raw_summary = json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        raise ValueError("Focus summary JSON is not valid.") from error
+
+    return save_focus_quality_session(raw_summary)
 
 def sync_profile_data_in_background(data):
     #keep local saves fast even when the server is slow or offline

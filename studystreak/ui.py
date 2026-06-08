@@ -10,6 +10,7 @@ from textual.widgets import (
     Footer,
     Static,
     Input,
+    TextArea,
     Button,
     TabbedContent,
     TabPane,
@@ -17,7 +18,7 @@ from textual.widgets import (
     Checkbox,
 )
 
-from studystreak.storage import load_data, repair_data, save_data
+from studystreak.storage import load_data, repair_data, save_data, save_focus_quality_json
 from studystreak.accounts import create_account, list_accounts, login_account, logout_account
 from studystreak.accounts import normalise_username, validate_password, validate_username
 from studystreak.session import set_session, clear_session, get_session_username, save_session_data, set_server_token, get_server_token
@@ -407,6 +408,33 @@ def has_focus_session(data):
 
     return False
 
+def format_focus_quality_time(seconds):
+    seconds = max(0, int(seconds))
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+
+    if minutes <= 0:
+        return f"{remaining_seconds}s"
+
+    return f"{minutes}m {remaining_seconds}s"
+
+def get_focus_quality_summary(data):
+    sessions = data.get("focus_quality_sessions", [])
+
+    if len(sessions) == 0:
+        return "No imported Chrome focus summaries yet."
+
+    latest_session = sessions[0]
+    return (
+        "[bold]Latest Chrome focus summary[/bold]\n"
+        f"Score: {latest_session.get('score', 0)}%\n"
+        f"Focused: {format_focus_quality_time(latest_session.get('focused_seconds', 0))}\n"
+        f"Distracted: {format_focus_quality_time(latest_session.get('distracted_seconds', 0))}\n"
+        f"Idle: {format_focus_quality_time(latest_session.get('idle_seconds', 0))}\n"
+        f"Top distraction: {latest_session.get('top_distracted_domain', 'none')}\n"
+        f"Imported summaries: {len(sessions)}"
+    )
+
 ACHIEVEMENTS = [
     {
         "id": "first-session",
@@ -747,7 +775,8 @@ class StudyStreakApp(App):
                             yield Button("Appearance", id="settings-appearance-button")
                             yield Button("Sounds", id="settings-sounds-button")
                             yield Button("Subjects", id="settings-subjects-button")
- 
+                            yield Button("Focus Import", id="settings-focus-import-button")
+
                         with Vertical(id="settings-content"):
                             with Vertical(id="weekly-goal-panel"):
                                 yield Static("Set your weekly study goal.", id="goal-panel-title")
@@ -775,6 +804,18 @@ class StudyStreakApp(App):
                                 yield Static("Appearance", id="appearance-panel-title")
                                 yield Checkbox("Light mode", id="light-mode-checkbox")
                                 yield Static("", id="appearance-message")
+
+                            with Vertical(id="focus-import-panel"):
+        
+                                yield Static("Chrome focus import", id="focus-quality-title")
+                                yield TextArea("", id="focus-quality-json-input")
+
+                                with Horizontal(id="focus-quality-button-row"):
+                                    yield Button("Import JSON", id="import-focus-json-button")
+                                    yield Button("Clear JSON", id="clear-focus-json-button")
+
+                                yield Static("", id="focus-quality-message")
+                                yield Static("", id="focus-quality-summary")
 
                             with Vertical(id="sounds-panel"):
                                 yield Static("Sound settings", id="sound-panel-title")
@@ -883,6 +924,9 @@ class StudyStreakApp(App):
         timetable_form_panel = self.query_one("#timetable-form-panel")
         timetable_form_panel.display = False
 
+        focus_import_panel = self.query_one("#focus-import-panel")
+        focus_import_panel.display = False
+
         self.apply_theme()
         self.hide_all_temp_messages()
         self.try_remembered_login()
@@ -913,6 +957,7 @@ class StudyStreakApp(App):
         timetable_grid = self.query_one("#timetable-grid", Static)
         achievements = self.query_one("#achievements", Static)
         manage_timetable_select = self.query_one("#manage-timetable-select", Select)
+        focus_quality_summary = self.query_one("#focus-quality-summary", Static)
 
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
@@ -928,6 +973,7 @@ class StudyStreakApp(App):
  
         recent_sessions.update(get_recent_sessions(data))
         subject_stats.update(get_subject_stats(data))
+        focus_quality_summary.update(get_focus_quality_summary(data))
  
         session_select.set_options(get_session_options(data))
         session_select.clear()
@@ -1135,6 +1181,7 @@ class StudyStreakApp(App):
             "#edit-website-message",
             "#delete-subject-message",
             "#focus-message",
+            "#focus-quality-message",
             "#focus-timer",
             "#global-message",
             "#login-message",
@@ -1909,12 +1956,14 @@ class StudyStreakApp(App):
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
             appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
 
             appearance_panel.display = False
             sounds_panel.display = False
             weekly_goal_panel.display = True
             subjects_panel.display = False
             sync_panel.display = False
+            focus_import_panel.display = False
             return
 
         if event.button.id == "settings-sync-button":
@@ -1923,12 +1972,14 @@ class StudyStreakApp(App):
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
             appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
 
             appearance_panel.display = False
             sounds_panel.display = False
             weekly_goal_panel.display = False
             subjects_panel.display = False
             sync_panel.display = True
+            focus_import_panel.display = False
             self.update_sync_status()
             return 
 
@@ -1938,12 +1989,14 @@ class StudyStreakApp(App):
             sounds_panel = self.query_one("#sounds-panel")
             subjects_panel = self.query_one("#subjects-panel")
             appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
 
             weekly_goal_panel.display = False
             sync_panel.display = False
             sounds_panel.display = False
             subjects_panel.display = False
             appearance_panel.display = True
+            focus_import_panel.display = False
 
             self.update_appearance_settings_panel()
             return
@@ -1954,12 +2007,14 @@ class StudyStreakApp(App):
             sounds_panel = self.query_one("#sounds-panel")
             subjects_panel = self.query_one("#subjects-panel")
             appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
 
             weekly_goal_panel.display = False
             sync_panel.display = False
             sounds_panel.display = True
             subjects_panel.display = False
             appearance_panel.display = False
+            focus_import_panel.display = False
 
             self.update_sound_settings_panel()
             return
@@ -1971,6 +2026,7 @@ class StudyStreakApp(App):
             sync_panel = self.query_one("#sync-panel")
             sounds_panel = self.query_one("#sounds-panel")
             appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
 
 
             subject_add_panel = self.query_one("#subject-add-panel")
@@ -1982,6 +2038,7 @@ class StudyStreakApp(App):
             sync_panel.display = False
             sounds_panel.display = False
             appearance_panel.display = False
+            focus_import_panel.display = False
 
             subject_add_panel.display = True
             subject_edit_panel.display = False
@@ -2503,6 +2560,47 @@ class StudyStreakApp(App):
                 return
  
             self.start_focus_session(str(subject), minutes)
+            return
+
+        if event.button.id == "import-focus-json-button":
+            focus_json_input = self.query_one("#focus-quality-json-input", TextArea)
+            raw_summary = focus_json_input.text.strip()
+
+            try:
+                session = save_focus_quality_json(raw_summary)
+            except ValueError as error:
+                self.show_temp_message("#focus-quality-message", f"[red]{error}[/red]")
+                return
+
+            focus_json_input.load_text("")
+            self.update_dashboard()
+            self.show_temp_message(
+                "#focus-quality-message",
+                f"[green]Imported Chrome focus summary with {session['score']}% quality.[/green]",
+            )
+            return
+
+        if event.button.id == "clear-focus-json-button":
+            focus_json_input = self.query_one("#focus-quality-json-input", TextArea)
+            focus_json_input.load_text("")
+            self.show_temp_message("#focus-quality-message", "[yellow]Focus JSON cleared.[/yellow]")
+            return
+
+        if event.button.id == "settings-focus-import-button":
+            weekly_goal_panel = self.query_one("#weekly-goal-panel")
+            subjects_panel = self.query_one("#subjects-panel")
+            sync_panel = self.query_one("#sync-panel")
+            sounds_panel = self.query_one("#sounds-panel")
+            appearance_panel = self.query_one("#appearance-panel")
+            focus_import_panel = self.query_one("#focus-import-panel")
+
+            weekly_goal_panel.display = False
+            subjects_panel.display = False
+            sync_panel.display = False
+            sounds_panel.display = False
+            appearance_panel.display = False
+            focus_import_panel.display = True
+            self.update_dashboard()
             return
 
         if event.button.id == "leaderboard-today-button":

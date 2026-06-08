@@ -280,11 +280,23 @@ TabPane {
 
 #focus-subject-select,
 #focus-website-input,
-#focus-minutes-input {
+#focus-minutes-input,
+#focus-quality-json-input {
     margin-bottom: 1;
 }
 
-#focus-button-row {
+#focus-quality-title {
+    margin-top: 2;
+    text-align: center;
+    color: #cfcfcf;
+}
+
+#focus-quality-json-input {
+    height: 8;
+}
+
+#focus-button-row,
+#focus-quality-button-row {
     height: auto;
     align: center middle;
     margin-top: 1;
@@ -292,7 +304,9 @@ TabPane {
 
 #open-website-button,
 #start-focus-button,
-#cancel-focus-button {
+#cancel-focus-button,
+#import-focus-json-button,
+#clear-focus-json-button {
     background: #2a2a2a;
     color: #e0e0e0;
     border: tall #777777;
@@ -300,19 +314,22 @@ TabPane {
 }
 
 #open-website-button:hover,
-#start-focus-button:hover {
+#start-focus-button:hover,
+#import-focus-json-button:hover {
     background: #3a3a3a;
     color: white;
     border: tall #aaaaaa;
 }
 
-#cancel-focus-button {
+#cancel-focus-button,
+#clear-focus-json-button {
     background: #2a1f1f;
     color: #d6c2c2;
     border: tall #6b4a4a;
 }
 
-#cancel-focus-button:hover {
+#cancel-focus-button:hover,
+#clear-focus-json-button:hover {
     background: #3a2929;
     color: white;
     border: tall #a66a6a;
@@ -328,6 +345,12 @@ TabPane {
     margin-top: 1;
     text-align: center;
     color: green;
+}
+
+#focus-quality-message,
+#focus-quality-summary {
+    margin-top: 1;
+    text-align: center;
 }
 
 
@@ -1080,6 +1103,7 @@ Button:hover,
 #log-title,
 #manage-title,
 #focus-title,
+#focus-quality-title,
 #leaderboard-title,
 #timetable-title {
     color: #cfcfcf;
@@ -1101,6 +1125,7 @@ Button:hover,
 }
 
 #cancel-focus-button,
+#clear-focus-json-button,
 #delete-selected-button,
 #delete-subject-button,
 #hide-timetable-form-button,
@@ -1111,6 +1136,7 @@ Button:hover,
 }
 
 #cancel-focus-button:hover,
+#clear-focus-json-button:hover,
 #delete-selected-button:hover,
 #delete-subject-button:hover,
 #hide-timetable-form-button:hover,
@@ -1139,6 +1165,7 @@ Button:hover,
 #subject-message,
 #edit-website-message,
 #focus-message,
+#focus-quality-message,
 #login-message,
 #timetable-message {
     color: green;
@@ -1209,7 +1236,18 @@ Screen.light-mode {
     border: round #9a8567;
 }
 
+.light-mode TextArea {
+    background: #fff8e8;
+    color: #2b2620;
+    border: round #9a8567;
+}
+
 .light-mode Input:focus {
+    background: #fff3db;
+    border: round #6f8799;
+}
+
+.light-mode TextArea:focus {
     background: #fff3db;
     border: round #6f8799;
 }
@@ -1287,6 +1325,7 @@ Screen.light-mode {
 .light-mode #log-button,
 .light-mode #open-website-button,
 .light-mode #start-focus-button,
+.light-mode #import-focus-json-button,
 .light-mode #refresh-leaderboard-button,
 .light-mode #save-goal-button,
 .light-mode #add-subject-button,
@@ -1306,6 +1345,7 @@ Screen.light-mode {
 .light-mode #log-button:hover,
 .light-mode #open-website-button:hover,
 .light-mode #start-focus-button:hover,
+.light-mode #import-focus-json-button:hover,
 .light-mode #refresh-leaderboard-button:hover,
 .light-mode #save-goal-button:hover,
 .light-mode #add-subject-button:hover,
@@ -1379,6 +1419,7 @@ Screen.light-mode {
 .light-mode #log-title,
 .light-mode #manage-title,
 .light-mode #focus-title,
+.light-mode #focus-quality-title,
 .light-mode #leaderboard-title,
 .light-mode #timetable-title {
     color: #254f6f;
@@ -1424,6 +1465,7 @@ Screen.light-mode {
 }
 
 .light-mode #cancel-focus-button,
+.light-mode #clear-focus-json-button,
 .light-mode #delete-selected-button,
 .light-mode #delete-subject-button,
 .light-mode #hide-timetable-form-button,
@@ -1435,6 +1477,7 @@ Screen.light-mode {
 }
 
 .light-mode #cancel-focus-button:hover,
+.light-mode #clear-focus-json-button:hover,
 .light-mode #delete-selected-button:hover,
 .light-mode #delete-subject-button:hover,
 .light-mode #hide-timetable-form-button:hover,
@@ -1468,6 +1511,7 @@ Screen.light-mode {
 .light-mode #subject-message,
 .light-mode #edit-website-message,
 .light-mode #focus-message,
+.light-mode #focus-quality-message,
 .light-mode #login-message,
 .light-mode #timetable-message {
     color: #246b31;
