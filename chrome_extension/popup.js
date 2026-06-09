@@ -15,6 +15,7 @@ const copySummaryButton = document.querySelector("#copy-summary-button");
 const focusHistory = document.querySelector("#focus-history");
 const clearHistoryButton = document.querySelector("#clear-history-button");
 const copyJsonButton = document.querySelector("#copy-json-button");
+const importKey = document.querySelector("#import-key");
 
 let latestCompletedFocusSession = null;
 
@@ -218,19 +219,69 @@ function buildFocusSummaryJson(summary) {
     };
 }
 
+function stableStringify(value) {
+    if (value === null || typeof value !== "object") {
+        return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(",")}]`;
+    }
+
+    return `{${Object.keys(value).sort().map((key) => {
+        return `${JSON.stringify(key)}:${stableStringify(value[key])}`;
+    }).join(",")}}`;
+}
+
+async function signFocusSummary(payload, secret) {
+    const encoder = new TextEncoder();
+
+    const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+    );
+
+    const signature = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        encoder.encode(stableStringify(payload))
+    );
+
+    return [...new Uint8Array(signature)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+}
+
 async function copySummaryJson() {
     if (!latestCompletedFocusSession) {
         return;
     }
-    
+
+    const secret = importKey.value.trim();
+
+    if (!secret) {
+        statusText.textContent = "Enter import key first.";
+        return;
+    }
+
+    const payload = buildFocusSummaryJson(latestCompletedFocusSession);
+    const signature = await signFocusSummary(payload, secret);
+
     await navigator.clipboard.writeText(
         JSON.stringify(
-            buildFocusSummaryJson(latestCompletedFocusSession),
+            {
+                payload,
+                signature
+            },
             null,
             2
         )
     );
-    statusText.textContent = "JSON copied.";
+
+    statusText.textContent = "Signed JSON copied.";
 }
 
 async function clearFocusHistory() {

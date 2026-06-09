@@ -5,6 +5,8 @@ from threading import Lock, Thread
 from typing import Any
 from uuid import uuid4
 from datetime import datetime, timezone
+import hmac
+import hashlib
 
 from studystreak.session import (
     is_logged_in,
@@ -55,6 +57,9 @@ def get_default_data():
         },
         "achievements": {
             "unlocked": [],
+        },
+        "focus_import_settings": {
+            "secret": "",
         },
 
     }
@@ -148,6 +153,12 @@ def repair_data(data):
     if "achievement" not in data["sound_settings"]:
         data["sound_settings"]["achievement"] = True
 
+    if "focus_import_settings" not in data:
+        data["focus_import_settings"] = {}
+    
+    if "secret" not in data["focus_import_settings"]:
+        data["focus_import_settings"]["secret"] = ""
+
     return data
 
 def load_legacy_data() -> dict[str, Any]:
@@ -194,6 +205,37 @@ def save_data(data):
 
     save_legacy_data(data)
 
+def get_focus_signature_payload(summary):
+    return json.dumps(
+        summary,
+        sort_keys=True,
+        separators=(",", ":")
+    )
+
+def sign_focus_summary(summary, secret):
+    return hmac.new(
+        secret.encode("utf-8"),
+        get_focus_signature_payload(summary).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+def unwrap_signed_focus_summary(raw_summary, secret):
+    if not str(secret).strip():
+        raise ValueError("Set a focus import key in Settings first.")
+
+    if "payload" not in raw_summary or "signature" not in raw_summary:
+        raise ValueError("Set a focus import key in Settings first.")
+    
+    payload = raw_summary["payload"]
+    signature = str(raw_summary["signature"])
+
+    expected_signature = sign_focus_summary(payload, secret)
+
+    if not hmac.compare_digest(signature, expected_signature):
+        raise ValueError("Focus summary signature is invalid.")
+
+    return payload
+
 def normalise_focus_quality_session(raw_summary):
     if not isinstance(raw_summary, dict):
         raise ValueError("Focus summary must be a JSON object.")
@@ -238,6 +280,9 @@ def normalise_focus_quality_session(raw_summary):
 
 def save_focus_quality_session(raw_summary):
     data = load_data()
+
+    secret = data.get("focus_import_settings", {}).get("secret", "")
+    raw_summary = unwrap_signed_focus_summary(raw_summary, secret)
     session = normalise_focus_quality_session(raw_summary)
 
     existing_sessions = data.get("focus_quality_sessions", [])

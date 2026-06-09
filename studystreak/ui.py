@@ -808,6 +808,12 @@ class StudyStreakApp(App):
                             with Vertical(id="focus-import-panel"):
         
                                 yield Static("Chrome focus import", id="focus-quality-title")
+                                yield Input(
+                                    placeholder="Focus import key",
+                                    id="focus-import-secret-input",
+                                    password=True,
+                                )
+                                yield Button("Save import Key", id="save-focus-import-secret-button")
                                 yield TextArea("", id="focus-quality-json-input")
 
                                 with Horizontal(id="focus-quality-button-row"):
@@ -958,7 +964,11 @@ class StudyStreakApp(App):
         achievements = self.query_one("#achievements", Static)
         manage_timetable_select = self.query_one("#manage-timetable-select", Select)
         focus_quality_summary = self.query_one("#focus-quality-summary", Static)
-
+        focus_import_secret_input= self.query_one("#focus-import-secret-input", Input)
+        focus_import_secret = data.get("focus_import_settings", {}).get("secret", "")
+        focus_import_secret_input.placeholder = (
+            "Import key saved" if focus_import_secret else "Focus import key"
+        )
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
@@ -2560,6 +2570,23 @@ class StudyStreakApp(App):
                 return
  
             self.start_focus_session(str(subject), minutes)
+            return
+
+        if event.button.id == "save-focus-import-secret-button":
+            secret_input = self.query_one("#focus-import-secret-input", Input)
+            secret = secret_input.value.strip()
+
+            if secret == "":
+                self.show_temp_message("#focus-quality-message", "[red]Import key cannot be empty.[/red]")
+                return
+            
+            data = load_data()
+            data["focus_import_settings"]["secret"] = secret
+            save_data(data)
+
+            secret_input.value = ""
+            self.update_dashboard()
+            self.show_temp_message("#focus-quality-message", "[green]Focus import key saved.[/green]")
             return
 
         if event.button.id == "import-focus-json-button":
