@@ -16,6 +16,12 @@ const focusHistory = document.querySelector("#focus-history");
 const clearHistoryButton = document.querySelector("#clear-history-button");
 const copyJsonButton = document.querySelector("#copy-json-button");
 const importKey = document.querySelector("#import-key");
+const accountStatus = document.querySelector("#account-status");
+const loginUsername = document.querySelector("#login-username");
+const loginPassword = document.querySelector("#login-password");
+const loginButton = document.querySelector("#login-button");
+const logoutButton = document.querySelector("#logout-button");
+
 
 let latestCompletedFocusSession = null;
 
@@ -114,6 +120,13 @@ function renderFocusSummary(summary) {
     focusDomain.textContent = `Current: ${safeSummary.lastDomain} (${safeSummary.lastCategory})`;
 }
 
+function renderAccount(settings) {
+    const loggedIn = Boolean(settings?.serverToken && settings?.serverUsername);
+
+    accountStatus.textContent = loggedIn ? `Logged in as ${settings.serverUsername}`: `Not logged in.`;
+    logoutButton.disabled = !loggedIn;
+}
+
 async function loadSettings() {
     try {
         const state = await chrome.runtime.sendMessage({
@@ -128,6 +141,7 @@ async function loadSettings() {
         reminderTime.value = state.settings.reminderTime;
         allowedDomains.value = state.settings.allowedDomains.join("\n");
 
+        renderAccount(state.settings);
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
@@ -136,6 +150,39 @@ async function loadSettings() {
         renderFocusSummary(EMPTY_SUMMARY);
         statusText.textContent = "Reload the extension in chrome://extensions.";
     }
+}
+
+async function loginToServer() {
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value;
+
+    if (!username || !password) {
+        statusText.textContent = "Enter username and password.";
+        return;
+    }
+
+    const result = await chrome.runtime.sendMessage({
+        type: "loginToServer",
+        username,
+        password
+    });
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Login failed.";
+        return;
+    }
+
+    loginPassword.value = "";
+    loginUsername.value = result.serverUsername;
+    renderAccount({ serverUsername: result.serverUsername, serverToken: "saved"});
+    statusText.textContent = "Logged in.";
+}
+
+async function logoutFromServer() {
+    await chrome.runtime.sendMessage({ type: "logoutFromServer"});
+    loginPassword.value = "";
+    renderAccount({ serverUsername: "", serverToken: "" });
+    statusText.textContent = "Logged out.";
 }
 
 async function saveSettings(showMessage = true) {
@@ -301,6 +348,8 @@ stopFocusButton.addEventListener("click", stopFocus);
 copySummaryButton.addEventListener("click", copySummary);
 copyJsonButton.addEventListener("click", copySummaryJson);
 clearHistoryButton.addEventListener("click", clearFocusHistory);
+loginButton.addEventListener("click", loginToServer);
+logoutButton.addEventListener("click", logoutFromServer);
 
 setInterval(refreshFocusStatus, 2000);
 

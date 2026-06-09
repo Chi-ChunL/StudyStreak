@@ -27,7 +27,9 @@ label {
     align-items: center;
 }
 
-input[type="time"] {
+input[type="time"],
+input[type="text"],
+input[type="password"] {
     box-sizing: border-box;
     width: 100%;
     margin-top: 6px;
@@ -77,6 +79,12 @@ button {
 button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+#account-status {
+    min-height: 20px;
+    color: #174a7c;
+    font-weight: bold;
 }
 
 #status {

@@ -1,4 +1,5 @@
 const DAILY_REMINDER_ALARM = "studystreak-daily-reminder";
+const API_BASE_URL = "https://chichi.hackclub.app";
 const FOCUS_TICK_ALARM = "studystreak-focus-tick";
 
 
@@ -20,7 +21,9 @@ const DEFAULT_SETTINGS = {
     focusLastCheckedAt: null,
     focusStats: DEFAULT_STATS,
     lastCompletedFocusSession: null,
-    focusHistory: []
+    focusHistory: [],
+    serverUsername: "",
+    serverToken: ""
 };
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
@@ -44,9 +47,60 @@ async function getSettings() {
         },
         focusHistory: Array.isArray(saved.focusHistory)
             ? saved.focusHistory
-            : []
+            : [],
+        
+        serverUsername: typeof saved.serverUsername === "string" ? saved.serverUsername : "",
+        serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: ""
     };
 }
+
+function getServerErrorMessage(data) {
+    const detail = data?.detail;
+
+    if (typeof detail === "string") {
+        return detail;
+    }
+
+    if (Array.isArray(detail)) {
+        return detail.map((item) => item?.msg || String(item)).join("; ");
+    }
+
+    return "Server login failed.";
+
+}
+
+async function loginToServer(username, password) {
+    const cleanUsername = username.trim().toLowerCase();
+
+    const response = await fetch(`${API_BASE_URL}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cleanUsername, password })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    await chrome.storage.local.set({
+        serverUsername: cleanUsername,
+        serverToken: data.access_token
+    });
+
+    return { ok: true, serverUsername: cleanUsername };
+}
+
+async function logoutFromServer() {
+    await chrome.storage.local.set({
+        serverUsername: "",
+        serverToken: ""
+    });
+
+    return { ok: true };
+}
+
 
 function cleanDomain(value) {
     if (!value) {
@@ -343,6 +397,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await chrome.storage.local.set(message.settings);
             await scheduleDailyReminder();
             return { ok: true };
+        }
+
+        if (message.type === "loginToServer") {
+            try {
+                return await loginToServer(message.username || "", message.password || "");
+            } catch(error) {
+                return { ok: false, error: error.message || "Login failed."};
+            }
+        }
+        
+        if (message.type === "logoutFromServer") {
+            return await logoutFromServer();
         }
 
         if (message.type === "testNotification") {
