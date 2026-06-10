@@ -1,5 +1,5 @@
 body {
-    width: 300px;
+    width: 430px;
     margin: 0;
     background: #f3e7cf;
     color: #2c211c;
@@ -118,4 +118,44 @@ h3 {
 
 .history-item span {
     display: block;
+}
+
+.popup-shell {
+    display: flex;
+    gap: 12px;
+}
+
+.side-tabs {
+    width: 88px;
+    flex-shrink: 0;
+}
+
+.side-tab-button {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 6px;
+    border-color: #9b8061;
+    background: #ead7b2;
+    color: #2c211c;
+    font-size: 12px;
+}
+
+.side-tab-button.active {
+    border-color: #174a7c;
+    background: #6f9fbe;
+}
+
+.tab-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.tab-panel {
+    margin-top: 8px;
+    border-top: 0;
+    padding-top: 0;
+}
+
+[hidden] {
+    display: none !important;
 }

@@ -21,9 +21,15 @@ const loginUsername = document.querySelector("#login-username");
 const loginPassword = document.querySelector("#login-password");
 const loginButton = document.querySelector("#login-button");
 const logoutButton = document.querySelector("#logout-button");
-
+const tabButtons = document.querySelectorAll(".side-tab-button");
+const tabPanels = document.querySelectorAll(".tab-panel");
 
 let latestCompletedFocusSession = null;
+let currentSettings = {
+    serverUsername: "",
+    serverToken: "",
+    focusActive: false
+};
 
 const EMPTY_SUMMARY = {
     focusActive: false,
@@ -68,8 +74,8 @@ function formatFocusSummaryText(summary) {
 
 function renderCompletedSummary(summary) {
     latestCompletedFocusSession = summary || null;
-    copySummaryButton.disabled = !latestCompletedFocusSession;
-    copyJsonButton.disabled = !latestCompletedFocusSession;
+    copySummaryButton.disabled = !isLoggedIn(currentSettings) || !latestCompletedFocusSession;
+    copyJsonButton.disabled = !isLoggedIn(currentSettings) || !latestCompletedFocusSession;
 
     if (!latestCompletedFocusSession) {
         lastFocusSummary.textContent = "No completed focus session yet.";
@@ -106,8 +112,9 @@ function renderFocusSummary(summary) {
         ...(summary || {})
     };
 
-    startFocusButton.disabled = safeSummary.focusActive;
-    stopFocusButton.disabled = !safeSummary.focusActive;
+    currentSettings.focusActive = safeSummary.focusActive;
+    startFocusButton.disabled = !isLoggedIn(currentSettings) || safeSummary.focusActive;
+    stopFocusButton.disabled = !isLoggedIn(currentSettings) || !safeSummary.focusActive;
 
     focusState.textContent = safeSummary.focusActive
         ? "Focus is running."
@@ -121,10 +128,77 @@ function renderFocusSummary(summary) {
 }
 
 function renderAccount(settings) {
-    const loggedIn = Boolean(settings?.serverToken && settings?.serverUsername);
+    currentSettings = {
+        ...currentSettings,
+        ...(settings || {})
+    };
 
-    accountStatus.textContent = loggedIn ? `Logged in as ${settings.serverUsername}`: `Not logged in.`;
+    const loggedIn = isLoggedIn(settings);
+
+    accountStatus.textContent = loggedIn
+        ? `Logged in as ${settings.serverUsername}`
+        : "Log in before using StudyStreak Companion.";
+
     logoutButton.disabled = !loggedIn;
+    setAccountGate(settings);
+}
+
+function showPopupTab(tabName) {
+    tabButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.tab === tabName);
+    });
+
+    tabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.panel !== tabName;
+        panel.classList.toggle("active", panel.dataset.panel === tabName);
+    });
+}
+
+function isLoggedIn(settings) {
+    return Boolean(settings?.serverToken && settings?.serverUsername);
+}
+
+function setAccountGate(settings) {
+    const loggedIn = isLoggedIn(settings);
+
+    tabButtons.forEach((button) => {
+        if (button.dataset.tab !== "account") {
+            button.disabled = !loggedIn;
+        }
+    });
+
+    saveButton.disabled = !loggedIn;
+    testButton.disabled = !loggedIn;
+    startFocusButton.disabled = !loggedIn || currentSettings.focusActive;
+    stopFocusButton.disabled = !loggedIn || !currentSettings.focusActive;
+    copySummaryButton.disabled = !loggedIn || !latestCompletedFocusSession;
+    copyJsonButton.disabled = !loggedIn || !latestCompletedFocusSession;
+    clearHistoryButton.disabled = !loggedIn;
+
+    if (!loggedIn) {
+        showPopupTab("account");
+    }
+}
+
+async function requireLogin() {
+    const state = await chrome.runtime.sendMessage({
+        type: "getCompanionState"
+    });
+
+    currentSettings = {
+        ...currentSettings,
+        ...(state?.settings || {})
+    };
+
+    renderAccount(currentSettings);
+
+    if (!isLoggedIn(currentSettings)) {
+        statusText.textContent = "Log in first.";
+        showPopupTab("account");
+        return false;
+    }
+
+    return true;
 }
 
 async function loadSettings() {
@@ -141,13 +215,19 @@ async function loadSettings() {
         reminderTime.value = state.settings.reminderTime;
         allowedDomains.value = state.settings.allowedDomains.join("\n");
 
-        renderAccount(state.settings);
+        currentSettings = {
+            ...currentSettings,
+            ...state.settings
+        };
+
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
+        renderAccount(currentSettings);
     } catch (error) {
         console.error(error);
         renderFocusSummary(EMPTY_SUMMARY);
+        renderAccount({});
         statusText.textContent = "Reload the extension in chrome://extensions.";
     }
 }
@@ -176,6 +256,7 @@ async function loginToServer() {
     loginUsername.value = result.serverUsername;
     renderAccount({ serverUsername: result.serverUsername, serverToken: "saved"});
     statusText.textContent = "Logged in.";
+    showPopupTab("focus");
 }
 
 async function logoutFromServer() {
@@ -183,9 +264,14 @@ async function logoutFromServer() {
     loginPassword.value = "";
     renderAccount({ serverUsername: "", serverToken: "" });
     statusText.textContent = "Logged out.";
+    showPopupTab("account");
 }
 
 async function saveSettings(showMessage = true) {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     await chrome.runtime.sendMessage({
         type: "saveSettings",
         settings: {
@@ -201,6 +287,10 @@ async function saveSettings(showMessage = true) {
 }
 
 async function testNotification() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     await chrome.runtime.sendMessage({
         type: "testNotification"
     });
@@ -209,6 +299,10 @@ async function testNotification() {
 }
 
 async function startFocus() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     await saveSettings(false);
 
     const summary = await chrome.runtime.sendMessage({
@@ -220,6 +314,10 @@ async function startFocus() {
 }
 
 async function stopFocus() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     const summary = await chrome.runtime.sendMessage({
         type: "stopFocus"
     });
@@ -243,6 +341,10 @@ async function refreshFocusStatus() {
 }
 
 async function copySummary() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     if (!latestCompletedFocusSession) {
         return;
     }    
@@ -303,6 +405,10 @@ async function signFocusSummary(payload, secret) {
 }
 
 async function copySummaryJson() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     if (!latestCompletedFocusSession) {
         return;
     }
@@ -332,6 +438,10 @@ async function copySummaryJson() {
 }
 
 async function clearFocusHistory() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
     await chrome.runtime.sendMessage({
         type: "clearFocusHistory"
     });
@@ -340,6 +450,12 @@ async function clearFocusHistory() {
     renderFocusHistory([]);
     statusText.textContent = "Focus history cleared.";
 }
+
+tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        showPopupTab(button.dataset.tab);
+    });
+});
 
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);

@@ -9,63 +9,86 @@
         <main>
             <h1>Study &gt;_ Streak</h1>
 
-            <section>
-                <h2>Account</h2>
-                <p id="account-status">Not Logged in.</p>
+            <div class="popup-shell">
+                <nav class="side-tabs">
+                    <button class="side-tab-button active" data-tab="account">Account</button>
+                    <button class="side-tab-button" data-tab="reminder" disabled>Reminder</button>
+                    <button class="side-tab-button" data-tab="focus" disabled>Focus</button>
+                    <button class="side-tab-button" data-tab="export" disabled>Export</button>
+                </nav>
 
-                <label>
-                    Username
-                    <input id="login-username" type="text" autocomplete="username">
-                </label>
+                <div class="tab-content">
+                    <section class="tab-panel active" data-panel="account">
+                        <h2>Account</h2>
+                        <p id="account-status">Not logged in.</p>
 
-                <label>
-                    Password
-                    <input id="login-password" type="password" autocomplete="current-password">
-                </label>
+                        <label>
+                            Username
+                            <input id="login-username" type="text" autocomplete="username">
+                        </label>
 
-                <button id="login-button">Login</button>
-                <button id="logout-button">Logout</button>
-            </section>
+                        <label>
+                            Password
+                            <input id="login-password" type="password" autocomplete="current-password">
+                        </label>
 
-            <label class="row">
-                <input id="reminders-enabled" type="checkbox">
-                Daily reminder
-            </label>
+                        <button id="login-button">Login</button>
+                        <button id="logout-button">Logout</button>
+                    </section>
 
-            <label>
-                Reminder time
-                <input id="reminder-time" type="time">
-            </label>
+                    <section class="tab-panel" data-panel="reminder" hidden>
+                        <h2>Reminder</h2>
 
-            <button id="save-button">Save</button>
-            <button id="test-button">Test notification</button>
+                        <label class="row">
+                            <input id="reminders-enabled" type="checkbox">
+                            Daily reminder
+                        </label>
 
-            <section>
-                <h2>Focus quality</h2>
+                        <label>
+                            Reminder time
+                            <input id="reminder-time" type="time">
+                        </label>
 
-                <label>
-                    Focus websites
-                    <textarea id="allowed-domains" rows="4"></textarea>
-                </label>
+                        <button id="save-button">Save</button>
+                        <button id="test-button">Test notification</button>
+                    </section>
 
-                <button id="start-focus-button">Start Focus</button>
-                <button id="stop-focus-button">Stop Focus</button>
+                    <section class="tab-panel" data-panel="focus" hidden>
+                        <h2>Focus quality</h2>
 
-                <p id="focus-state"></p>
-                <p id="focus-score"></p>
-                <p id="focus-time"></p>
-                <p id="focus-domain"></p>
-                <p id="last-focus-summary"></p>
-                <button id="copy-summary-button" disabled>Copy Summary</button>
-                <label>
-                    Import Key
-                    <input id="import-key" type="password">
-                </label>
-                <button id="copy-json-button" disabled>Copy JSON</button>
-                <h3>Recent focus sessions</h3>
-                <div id="focus-history"></div>
-                <button id="clear-history-button">Clear History</button>
-            </section>
+                        <label>
+                            Focus websites
+                            <textarea id="allowed-domains" rows="4"></textarea>
+                        </label>
+
+                        <button id="start-focus-button">Start Focus</button>
+                        <button id="stop-focus-button">Stop Focus</button>
+
+                        <p id="focus-state"></p>
+                        <p id="focus-score"></p>
+                        <p id="focus-time"></p>
+                        <p id="focus-domain"></p>
+                    </section>
+
+                    <section class="tab-panel" data-panel="export" hidden>
+                        <h2>Export</h2>
+
+                        <p id="last-focus-summary"></p>
+                        <button id="copy-summary-button" disabled>Copy Summary</button>
+
+                        <label>
+                            Import Key
+                            <input id="import-key" type="password">
+                        </label>
+
+                        <button id="copy-json-button" disabled>Copy JSON</button>
+
+                        <h3>Recent focus sessions</h3>
+                        <div id="focus-history"></div>
+                        <button id="clear-history-button">Clear History</button>
+                    </section>
+                </div>
+            </div>
 
             <p id="status"></p>
         </main>

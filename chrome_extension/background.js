@@ -93,9 +93,13 @@ async function loginToServer(username, password) {
 }
 
 async function logoutFromServer() {
+    await chrome.alarms.clear(FOCUS_TICK_ALARM);
+
     await chrome.storage.local.set({
         serverUsername: "",
-        serverToken: ""
+        serverToken: "",
+        focusActive: false,
+        focusLastCheckedAt: null
     });
 
     return { ok: true };
