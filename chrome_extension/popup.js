@@ -5,6 +5,8 @@ const testButton = document.querySelector("#test-button");
 const statusText = document.querySelector("#status");
 const allowedDomains = document.querySelector("#allowed-domains");
 const startFocusButton = document.querySelector("#start-focus-button");
+const focusSubject = document.querySelector("#focus-subject");
+const refreshSubjectsButton = document.querySelector("#refresh-subjects-button");
 const stopFocusButton = document.querySelector("#stop-focus-button");
 const focusState = document.querySelector("#focus-state");
 const focusScore = document.querySelector("#focus-score");
@@ -28,7 +30,8 @@ let latestCompletedFocusSession = null;
 let currentSettings = {
     serverUsername: "",
     serverToken: "",
-    focusActive: false
+    focusActive: false,
+    syncedSubjects: []
 };
 
 const EMPTY_SUMMARY = {
@@ -64,6 +67,7 @@ function formatSeconds(seconds) {
 function formatFocusSummaryText(summary) {
     return [
         "StudyStreak focus summary",
+        `Subject: ${summary.subject || "unknown"}`,
         `Score: ${summary.score}%`,
         `Focused: ${formatSeconds(summary.focusedSeconds)}`,
         `Distracted: ${formatSeconds(summary.distractedSeconds)}`,
@@ -97,6 +101,7 @@ function renderFocusHistory(history) {
         .map((session) => {
             return `
                 <div class="history-item">
+                    <span>Subject: ${session.subject || "unknown"}</span>
                     <strong>${session.score}%</strong>
                     <span>${formatSeconds(session.focusedSeconds)} focused</span>
                     <span>Top distraction: ${session.topDistractedDomain || "none"}</span>
@@ -106,6 +111,46 @@ function renderFocusHistory(history) {
         .join("");
 }
 
+function getSyncedSubjects(settings = currentSettings) {
+    return Array.isArray(settings?.syncedSubjects) ? settings.syncedSubjects : [];
+}
+
+function hasSyncedSubjects(settings = currentSettings) {
+    return getSyncedSubjects(settings).length > 0;
+}
+
+function renderSubjectOptions(subjects, selectedSubject = "") {
+    const safeSubjects = Array.isArray(subjects) ? subjects : [];
+    focusSubject.innerHTML = "";
+
+    if (safeSubjects.length === 0) {
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "No synced subjects";
+        focusSubject.append(emptyOption);
+        focusSubject.disabled = true;
+        return;
+    }
+
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "Choose a subject";
+    focusSubject.append(placeholderOption);
+
+    safeSubjects.forEach((subject) => {
+        const option = document.createElement("option");
+        option.value = subject;
+        option.textContent = subject;
+        focusSubject.append(option);
+    });
+
+    focusSubject.value = safeSubjects.includes(selectedSubject)
+        ? selectedSubject
+        : "";
+
+    focusSubject.disabled = !isLoggedIn(currentSettings) || currentSettings.focusActive;
+}
+
 function renderFocusSummary(summary) {
     const safeSummary = {
         ...EMPTY_SUMMARY,
@@ -113,8 +158,17 @@ function renderFocusSummary(summary) {
     };
 
     currentSettings.focusActive = safeSummary.focusActive;
-    startFocusButton.disabled = !isLoggedIn(currentSettings) || safeSummary.focusActive;
+    startFocusButton.disabled = (
+        !isLoggedIn(currentSettings) ||
+        safeSummary.focusActive ||
+        !hasSyncedSubjects(currentSettings)
+    );
     stopFocusButton.disabled = !isLoggedIn(currentSettings) || !safeSummary.focusActive;
+    focusSubject.disabled = (
+        !isLoggedIn(currentSettings) ||
+        safeSummary.focusActive ||
+        !hasSyncedSubjects(currentSettings)
+    );
 
     focusState.textContent = safeSummary.focusActive
         ? "Focus is running."
@@ -169,11 +223,13 @@ function setAccountGate(settings) {
 
     saveButton.disabled = !loggedIn;
     testButton.disabled = !loggedIn;
-    startFocusButton.disabled = !loggedIn || currentSettings.focusActive;
+    startFocusButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     stopFocusButton.disabled = !loggedIn || !currentSettings.focusActive;
     copySummaryButton.disabled = !loggedIn || !latestCompletedFocusSession;
     copyJsonButton.disabled = !loggedIn || !latestCompletedFocusSession;
     clearHistoryButton.disabled = !loggedIn;
+    refreshSubjectsButton.disabled = !loggedIn;
+    focusSubject.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
 
     if (!loggedIn) {
         showPopupTab("account");
@@ -220,6 +276,7 @@ async function loadSettings() {
             ...state.settings
         };
 
+        renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
@@ -254,17 +311,60 @@ async function loginToServer() {
 
     loginPassword.value = "";
     loginUsername.value = result.serverUsername;
-    renderAccount({ serverUsername: result.serverUsername, serverToken: "saved"});
-    statusText.textContent = "Logged in.";
+    currentSettings = {
+        ...currentSettings,
+        serverUsername: result.serverUsername,
+        serverToken: "saved",
+        syncedSubjects: result.subjects || []
+    };
+    renderSubjectOptions(currentSettings.syncedSubjects, "");
+    renderAccount(currentSettings);
+    statusText.textContent = currentSettings.syncedSubjects.length > 0
+        ? "Logged in."
+        : "Logged in. Sync subjects in the terminal app, then refresh.";
     showPopupTab("focus");
 }
 
 async function logoutFromServer() {
     await chrome.runtime.sendMessage({ type: "logoutFromServer"});
     loginPassword.value = "";
-    renderAccount({ serverUsername: "", serverToken: "" });
+    currentSettings = {
+        ...currentSettings,
+        serverUsername: "",
+        serverToken: "",
+        syncedSubjects: [],
+        focusSubject: ""
+    };
+    renderSubjectOptions([], "");
+    renderAccount(currentSettings);
     statusText.textContent = "Logged out.";
     showPopupTab("account");
+}
+
+async function refreshSubjects() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
+    const result = await chrome.runtime.sendMessage({
+        type: "refreshSubjects"
+    });
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Could not refresh subjects.";
+        return;
+    }
+
+    currentSettings = {
+        ...currentSettings,
+        syncedSubjects: result.subjects || []
+    };
+
+    renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
+    setAccountGate(currentSettings);
+    statusText.textContent = currentSettings.syncedSubjects.length > 0
+        ? "Subjects refreshed."
+        : "No synced subjects yet.";
 }
 
 async function saveSettings(showMessage = true) {
@@ -303,10 +403,17 @@ async function startFocus() {
         return;
     }
 
-    await saveSettings(false);
+    const subject = focusSubject.value.trim();
 
+    if (!subject) {
+        statusText.textContent = "Choose a synced subject first.";
+        return;
+    }
+
+    await saveSettings(false);
     const summary = await chrome.runtime.sendMessage({
-        type: "startFocus"
+        type: "startFocus",
+        subject
     });
 
     renderFocusSummary(summary);
@@ -359,6 +466,7 @@ async function copySummary() {
 function buildFocusSummaryJson(summary) {
     return {
         source: "chrome_extension",
+        subject: summary.subject || "unknown",
         score: summary.score,
         focused_seconds: summary.focusedSeconds,
         distracted_seconds: summary.distractedSeconds,
@@ -459,6 +567,7 @@ tabButtons.forEach((button) => {
 
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
+refreshSubjectsButton.addEventListener("click", refreshSubjects);
 startFocusButton.addEventListener("click", startFocus);
 stopFocusButton.addEventListener("click", stopFocus);
 copySummaryButton.addEventListener("click", copySummary);

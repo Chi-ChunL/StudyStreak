@@ -55,7 +55,13 @@
 
                     <section class="tab-panel" data-panel="focus" hidden>
                         <h2>Focus quality</h2>
-
+                        <label>
+                            Subject
+                            <select id="focus-subject">
+                                <option value="">No synced subjects</option>
+                            </select>
+                        </label>
+                        <button id="refresh-subjects-button">Refresh Subjects</button>
                         <label>
                             Focus websites
                             <textarea id="allowed-domains" rows="4"></textarea>

@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
     focusStats: DEFAULT_STATS,
     lastCompletedFocusSession: null,
     focusHistory: [],
+    focusSubject: "",
+    syncedSubjects: [],
     serverUsername: "",
     serverToken: ""
 };
@@ -48,9 +50,12 @@ async function getSettings() {
         focusHistory: Array.isArray(saved.focusHistory)
             ? saved.focusHistory
             : [],
-        
+        syncedSubjects: Array.isArray(saved.syncedSubjects)
+            ? saved.syncedSubjects
+            : [],
         serverUsername: typeof saved.serverUsername === "string" ? saved.serverUsername : "",
-        serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: ""
+        serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: "",
+        focusSubject: typeof saved.focusSubject === "string" ? saved.focusSubject: "",
     };
 }
 
@@ -69,6 +74,55 @@ function getServerErrorMessage(data) {
 
 }
 
+function cleanSubjectList(subjects) {
+    if (!Array.isArray(subjects)) {
+        return [];
+    }
+
+    return subjects
+        .map((subject) => String(subject).trim().toLowerCase())
+        .filter(Boolean);
+}
+
+async function fetchSubjectsFromServer(token) {
+    const response = await fetch(`${API_BASE_URL}/subjects`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return cleanSubjectList(data.subjects);
+}
+
+async function refreshSubjectsFromServer() {
+    const settings = await getSettings();
+
+    if (!settings.serverToken) {
+        return {
+            ok: false,
+            error: "Log in first.",
+            subjects: []
+        };
+    }
+
+    const subjects = await fetchSubjectsFromServer(settings.serverToken);
+
+    await chrome.storage.local.set({
+        syncedSubjects: subjects
+    });
+
+    return {
+        ok: true,
+        subjects
+    };
+}
+
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
 
@@ -84,12 +138,21 @@ async function loginToServer(username, password) {
         throw new Error(getServerErrorMessage(data));
     }
 
+    let subjects = [];
+
+    try {
+        subjects = await fetchSubjectsFromServer(data.access_token);
+    } catch {
+        subjects = [];
+    }
+
     await chrome.storage.local.set({
         serverUsername: cleanUsername,
-        serverToken: data.access_token
+        serverToken: data.access_token,
+        syncedSubjects: subjects
     });
 
-    return { ok: true, serverUsername: cleanUsername };
+    return { ok: true, serverUsername: cleanUsername, subjects };
 }
 
 async function logoutFromServer() {
@@ -99,7 +162,9 @@ async function logoutFromServer() {
         serverUsername: "",
         serverToken: "",
         focusActive: false,
-        focusLastCheckedAt: null
+        focusLastCheckedAt: null,
+        focusSubject: "",
+        syncedSubjects: []
     });
 
     return { ok: true };
@@ -192,6 +257,7 @@ function getFocusSummary(settings) {
 
     return {
         focusActive: settings.focusActive,
+        subject: settings.focusSubject || "unknown",
         score,
         totalSeconds,
         topDistractedDomain,
@@ -243,10 +309,11 @@ async function recordFocusElapsed() {
     });
 }
 
-async function startFocus() {
+async function startFocus(subject) {
     const settings = await getSettings();
     const now = Date.now();
     const current = await getCurrentFocusCategory(settings);
+    const cleanSubject = String(subject || "").trim().toLowerCase()
 
     const stats = {
         ...DEFAULT_STATS,
@@ -256,6 +323,7 @@ async function startFocus() {
 
     await chrome.storage.local.set({
         focusActive: true,
+        focusSubject: cleanSubject,
         focusStartedAt: now,
         focusLastCheckedAt: now,
         focusStats: stats
@@ -269,6 +337,7 @@ async function startFocus() {
     return getFocusSummary({
         ...settings,
         focusActive: true,
+        focusSubject: cleanSubject,
         focusStats: stats
     });
 }
@@ -291,7 +360,8 @@ async function stopFocus() {
         focusActive: false,
         focusLastCheckedAt: null,
         lastCompletedFocusSession: completedSummary,
-        focusHistory
+        focusHistory,
+        focusSubject: "",
     });
 
     return completedSummary;
@@ -415,13 +485,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return await logoutFromServer();
         }
 
+        if (message.type === "refreshSubjects") {
+            try {
+                return await refreshSubjectsFromServer();
+            } catch(error) {
+                return { ok: false, error: error.message || "Could not refresh subjects.", subjects: [] };
+            }
+        }
+
         if (message.type === "testNotification") {
             await showStudyReminder(true);
             return { ok: true };
         }
 
         if (message.type === "startFocus") {
-            return await startFocus();
+            return await startFocus(message.subject || "") ;
         }
 
         if (message.type === "stopFocus") {

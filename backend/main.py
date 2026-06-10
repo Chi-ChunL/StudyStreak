@@ -4,6 +4,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import os
+import json
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -20,6 +21,7 @@ from backend.schemas import(
     TokenResponse,
     UserCreate,
     UserLogin,
+    SubjectList,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -31,6 +33,12 @@ with engine.connect() as connection:
     if "encrypted_profile_data" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN encrypted_profile_data TEXT")
+        )
+        connection.commit()
+
+    if "subjects_json" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN subjects_json TEXT")
         )
         connection.commit()
 
@@ -198,6 +206,44 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         )
         for result in results
     ]
+
+def clean_subjects(subjects: list[str]) -> list[str]:
+    cleaned_subjects = []
+
+    for subject in subjects:
+        clean_subject = subject.strip().lower()
+
+        if clean_subject and clean_subject not in cleaned_subjects:
+            cleaned_subjects.append(clean_subject)
+
+    return cleaned_subjects[:50]
+
+@app.get("/subjects", response_model=SubjectList)
+def get_subjects(current_user: User = Depends(get_current_user)):
+    if not current_user.subjects_json:
+        return SubjectList(subjects=[])
+
+    try:
+        subjects = json.loads(current_user.subjects_json)
+    except json.JSONDecodeError:
+        subjects = []
+
+    if not isinstance(subjects, list):
+        subjects = []
+
+    return SubjectList(subjects=clean_subjects(subjects))
+
+
+@app.put("/subjects")
+def update_subjects(
+    subject_data: SubjectList,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.subjects_json = json.dumps(clean_subjects(subject_data.subjects))
+    db.commit()
+
+    return {"message": "Subjects saved."}
 
 @app.get("/profile-data", response_model=ProfileDataResponse)
 def get_profile_data(

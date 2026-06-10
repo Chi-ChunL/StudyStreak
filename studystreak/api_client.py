@@ -189,3 +189,24 @@ def upload_profile_data(token: str, encrypted_profile_data: str) -> None:
 
     if response.status_code != 200:
         raise_server_error("Profile upload", response)
+
+
+def upload_subjects(token: str, subjects: list[str]) -> None:
+    #upload subject list for the Chrome extension
+    try:
+        response = requests.put(
+            f"{BASE_URL}/subjects",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "subjects": subjects,
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Subject sync", response)

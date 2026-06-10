@@ -16,6 +16,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     encrypted_profile_data = Column(String, nullable=True)
+    subjects_json = Column(String, nullable=True)
 
     focus_sessions = relationship(
         "FocusSession",

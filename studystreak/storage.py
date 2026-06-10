@@ -18,7 +18,7 @@ from studystreak.session import (
 )
 
 from studystreak.profile_sync import encrypt_profile_data
-from studystreak.api_client import upload_profile_data
+from studystreak.api_client import upload_profile_data, upload_subjects
 
 
 DATA_FILE = Path("study_data.json")
@@ -243,6 +243,14 @@ def normalise_focus_quality_session(raw_summary):
     if raw_summary.get("source") != "chrome_extension":
         raise ValueError("Focus summary must come from the Chrome extension.")
 
+    subject = str(raw_summary.get("subject", "unknown")).strip().lower()
+
+    if subject == "":
+        subject = "unknown"
+
+    if len(subject) > 50:
+        raise ValueError("Focus summary subject is too long.")
+
     completed_at = str(raw_summary.get("completed_at", "")).strip()
     if completed_at == "":
         raise ValueError("Focus summary is missing completed_at.")
@@ -255,6 +263,7 @@ def normalise_focus_quality_session(raw_summary):
     try:
         session = {
             "source": "chrome_extension",
+            "subject": subject,
             "score": int(raw_summary.get("score", 0)),
             "focused_seconds": int(raw_summary.get("focused_seconds", 0)),
             "distracted_seconds": int(raw_summary.get("distracted_seconds", 0)),
@@ -385,6 +394,7 @@ def sync_profile_data(data):
 
         encrypted_profile_data = encrypt_profile_data(data, username, password)
         upload_profile_data(token, encrypted_profile_data)
+        upload_subjects(token, data.get("subjects", []))
 
     except Exception as error:
         update_sync_result_if_current(

@@ -37,3 +37,5 @@ class ProfileDataResponse(BaseModel):
     #encrypted profile download
     encrypted_profile_data: str | None = None
 
+class SubjectList(BaseModel):
+    subjects: list[str] = Field(default_factory=list)
