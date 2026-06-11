@@ -72,8 +72,17 @@ function formatFocusSummaryText(summary) {
         `Focused: ${formatSeconds(summary.focusedSeconds)}`,
         `Distracted: ${formatSeconds(summary.distractedSeconds)}`,
         `Idle: ${formatSeconds(summary.idleSeconds)}`,
+        `Server upload: ${formatServerUpload(summary)}`,
         `Top distraction: ${summary.topDistractedDomain || "none"}`
     ].join("\n");
+}
+
+function formatServerUpload(summary) {
+    if (summary.serverUpload?.ok) {
+        return `Uploaded ${summary.serverUpload.minutes} min`;
+    }
+
+    return summary.serverUpload?.error || "Not uploaded";
 }
 
 function renderCompletedSummary(summary) {
@@ -436,7 +445,9 @@ async function stopFocus() {
     });
 
     renderFocusHistory(state.settings.focusHistory);
-    statusText.textContent = "Focus stopped.";
+    statusText.textContent = summary.serverUpload?.ok
+        ? `Focus stopped. Uploaded ${summary.serverUpload.minutes} min.`
+        : `Focus stopped. Upload failed: ${summary.serverUpload?.error || "Unknown error."}`;
 }
 
 async function refreshFocusStatus() {

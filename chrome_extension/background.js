@@ -123,6 +123,56 @@ async function refreshSubjectsFromServer() {
     };
 }
 
+function getLeaderboardMinutes(summary) {
+    const focusedSeconds = Number(summary.focusedSeconds) || 0;
+
+    if (focusedSeconds <= 0) {
+        return 0;
+    }
+
+    return Math.max(1, Math.round(focusedSeconds / 60));
+}
+
+async function uploadCompletedFocusSession(summary, token) {
+    const minutes = getLeaderboardMinutes(summary);
+
+    if (!token) {
+        return { ok: false, error: "Log in first."};
+    }
+
+    if (!summary.subject || summary.subject === "unknown") {
+        return { ok: false, error: "Missing subject."};
+    }
+
+    if (minutes <= 0) {
+        return { ok: false, error: "No focused time to upload."};
+    }
+
+    const response = await fetch(`${API_BASE_URL}/focus-sessions`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            subject: summary.subject,
+            minutes,
+            website: null,
+            completed: true,
+            source: "chrome_extension"
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return { ok: true, minutes };
+
+}
+
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
 
@@ -350,8 +400,28 @@ async function stopFocus() {
     };
 
     const settings = await getSettings();
+
+    let serverUpload = { ok: false, error: "Not uploaded."};
+
+    try {
+        serverUpload = await uploadCompletedFocusSession(
+            completedSummary,
+            settings.serverToken
+        );
+    } catch (error) {
+        serverUpload = {
+            ok: false,
+            error: error.message || "Upload failed."
+        };
+    }
+
+    const completedSummaryWithUpload = {
+        ...completedSummary,
+        serverUpload
+    };
+
     const focusHistory = [
-        completedSummary,
+        completedSummaryWithUpload,
         ...(settings.focusHistory || [])
     ].slice(0,3);
 
@@ -359,12 +429,12 @@ async function stopFocus() {
     await chrome.storage.local.set({
         focusActive: false,
         focusLastCheckedAt: null,
-        lastCompletedFocusSession: completedSummary,
+        lastCompletedFocusSession: completedSummaryWithUpload,
         focusHistory,
         focusSubject: "",
     });
 
-    return completedSummary;
+    return completedSummaryWithUpload;
 }
 
 function getNextReminderTime(timeValue) {
