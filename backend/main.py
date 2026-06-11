@@ -262,7 +262,7 @@ def update_subjects(
     return {"message": "Subjects saved."}
 
 @app.post("/focus-quality-sessions")
-def create_focus_session(
+def create_focus_quality_session(
     request: Request,
     session_data: FocusQualitySessionCreate,
     current_user: User = Depends(get_current_user),

@@ -73,6 +73,7 @@ function formatFocusSummaryText(summary) {
         `Distracted: ${formatSeconds(summary.distractedSeconds)}`,
         `Idle: ${formatSeconds(summary.idleSeconds)}`,
         `Server upload: ${formatServerUpload(summary)}`,
+        `Quality sync: ${formatQualityUpload(summary)}`,
         `Top distraction: ${summary.topDistractedDomain || "none"}`
     ].join("\n");
 }
@@ -83,6 +84,14 @@ function formatServerUpload(summary) {
     }
 
     return summary.serverUpload?.error || "Not uploaded";
+}
+
+function formatQualityUpload(summary) {
+    if (summary.qualityUpload?.ok) {
+        return "Synced";
+    }
+
+    return summary.qualityUpload?.error || "Not synced";
 }
 
 function renderCompletedSummary(summary) {
@@ -445,9 +454,15 @@ async function stopFocus() {
     });
 
     renderFocusHistory(state.settings.focusHistory);
-    statusText.textContent = summary.serverUpload?.ok
-        ? `Focus stopped. Uploaded ${summary.serverUpload.minutes} min.`
-        : `Focus stopped. Upload failed: ${summary.serverUpload?.error || "Unknown error."}`;
+    const leaderboardStatus = summary.serverUpload?.ok
+        ? `Leaderboard uploaded ${summary.serverUpload.minutes} min`
+        : `Leaderboard failed: ${summary.serverUpload?.error || "Unknown error."}`;
+
+    const qualityStatus = summary.qualityUpload?.ok
+        ? "Quality synced"
+        : `Quality failed: ${summary.qualityUpload?.error || "Unknown error."}`;
+
+    statusText.textContent = `Focus stopped. ${leaderboardStatus}. ${qualityStatus}.`;
 }
 
 async function refreshFocusStatus() {

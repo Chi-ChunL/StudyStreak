@@ -173,6 +173,46 @@ async function uploadCompletedFocusSession(summary, token) {
 
 }
 
+async function uploadFocusQualitySession(summary, token) {
+    if (!token) {
+        return { ok: false, error: "Log in first."};
+    }
+
+    if (!summary.subject || summary.subject === "unknown") {
+        return { ok: false, error: "Missing subject."};
+    }
+
+    if (!summary.completedAt) {
+        return { ok: false, error: "Missing completion time." };
+    }
+
+    const response = await fetch(`${API_BASE_URL}/focus-quality-sessions`, {
+        method: "POST",
+        header: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            source: "chrome_extension",
+            subject: summary.subject,
+            score: summary.score,
+            focused_seconds: summary.focusedSeconds,
+            distracted_seconds: summary.distractedSeconds,
+            idle_seconds: summary.idleSeconds,
+            top_distracted_domain: summary.topDistractedDomain || "none",
+            completed_at: summary.completedAt
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return { ok: true };
+}
+
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
 
@@ -402,6 +442,7 @@ async function stopFocus() {
     const settings = await getSettings();
 
     let serverUpload = { ok: false, error: "Not uploaded."};
+    let qualityUpload = { ok: false, error: "Not synced"};
 
     try {
         serverUpload = await uploadCompletedFocusSession(
@@ -415,9 +456,22 @@ async function stopFocus() {
         };
     }
 
+    try {
+        qualityUpload = await uploadFocusQualitySession(
+            completedSummary,
+            settings.serverToken
+        );
+    } catch(error) {
+        qualityUpload = {
+            ok: false,
+            error: error.message || "Quality sync failed."
+        };
+    }
+
     const completedSummaryWithUpload = {
         ...completedSummary,
-        serverUpload
+        serverUpload,
+        qualityUpload
     };
 
     const focusHistory = [
