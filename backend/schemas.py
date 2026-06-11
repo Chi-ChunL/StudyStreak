@@ -28,6 +28,8 @@ class LeaderboardEntry(BaseModel):
     #leaderboard row
     display_name: str
     total_minutes: int
+    app_minutes: int = 0
+    chrome_minutes: int = 0
 
 class ProfileDataUpdate(BaseModel):
     #encrypted profile upload

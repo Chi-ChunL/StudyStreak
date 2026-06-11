@@ -361,34 +361,67 @@ def get_today_timetable_display(data):
 
 def get_subject_stats(data):
     sessions = data["sessions"]
- 
-    if len(sessions) == 0:
-        return "No study sessions logged yet."
- 
+    focus_sessions = data.get("focus_quality_sessions", [])
+
     subject_total = {}
- 
+
     for session in sessions:
         subject = session["subject"]
         minutes = session["minutes"]
- 
+
         if subject not in subject_total:
             subject_total[subject] = 0
- 
+
         subject_total[subject] += minutes
- 
+
+    focus_by_subject = {}
+
+    for session in focus_sessions:
+        subject = session.get("subject", "unknown")
+        focused_seconds = session.get("focused_seconds", 0)
+        score = session.get("score", 0)
+
+        if subject not in focus_by_subject:
+            focus_by_subject[subject] = {
+                "sessions": 0,
+                "focused_seconds": 0,
+                "total_score": 0,
+            }
+
+        focus_by_subject[subject]["sessions"] += 1
+        focus_by_subject[subject]["focused_seconds"] += focused_seconds
+        focus_by_subject[subject]["total_score"] += score
+
     lines = ["[bold]Subject Stats[/bold]"]
- 
-    for subject, total_minutes in sorted(subject_total.items()):
+
+    if len(subject_total) == 0 and len(focus_by_subject) == 0:
+        return "No study sessions logged yet."
+
+    all_subjects = sorted(set(subject_total) | set(focus_by_subject))
+
+    for subject in all_subjects:
+        total_minutes = subject_total.get(subject, 0)
         hours = total_minutes // 60
         remaining_minutes = total_minutes % 60
- 
+
         if hours > 0:
             time_text = f"{hours}h {remaining_minutes}m"
         else:
             time_text = f"{remaining_minutes}m"
- 
+
         lines.append(f"{subject} - {time_text}")
- 
+
+        focus_stats = focus_by_subject.get(subject)
+
+        if focus_stats:
+            focus_minutes = focus_stats["focused_seconds"] // 60
+            average_score = focus_stats["total_score"] // focus_stats["sessions"]
+
+            lines.append(
+                f"  Chrome focus - {focus_minutes}m focused, "
+                f"{average_score}% average quality"
+            )
+
     return "\n".join(lines)
  
 def is_blank_select_value(value):
@@ -1783,8 +1816,12 @@ class StudyStreakApp(App):
         lines = [f"[bold]{period_titles[period]} Leaderboard[/bold]"]
 
         for index, row in enumerate(rows, start=1):
+            app_minutes = row.get("app_minutes", 0)
+            chrome_minutes = row.get("chrome_minutes", 0)
+
             lines.append(
-                f"{index}. {row['display_name']} - {row['total_minutes']} minutes"
+                f"{index}. {row['display_name']} - {row['total_minutes']} minutes "
+                f"(App {app_minutes}m, Chrome {chrome_minutes}m)"
             )
         leaderboard.update("\n".join(lines))
 

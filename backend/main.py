@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import os
@@ -168,6 +168,18 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         db.query(
             User.display_name,
             func.sum(FocusSession.minutes).label("total_minutes"),
+            func.sum(
+                case(
+                    (FocusSession.source == "chrome_extension", 0),
+                    else_=FocusSession.minutes,
+                )
+            ).label("app_minutes"),
+            func.sum(
+                case(
+                    (FocusSession.source == "chrome_extension", FocusSession.minutes),
+                    else_=0,
+                )
+            ).label("chrome_minutes"),
         )
         .join(FocusSession)
         .filter(FocusSession.completed.is_(True))
@@ -203,6 +215,8 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         LeaderboardEntry(
             display_name=result.display_name,
             total_minutes=result.total_minutes,
+            app_minutes=result.app_minutes,
+            chrome_minutes=result.chrome_minutes,
         )
         for result in results
     ]
