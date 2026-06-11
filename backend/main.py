@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 
 from backend.auth import create_access_token, hash_password, verify_password, get_current_user
 from backend.database import Base, engine, get_db
-from backend.models import FocusSession, User
+from backend.models import FocusSession, User, FocusQualitySession
 from backend.schemas import(
     FocusSessionCreate,
     LeaderboardEntry,
@@ -22,6 +22,8 @@ from backend.schemas import(
     UserCreate,
     UserLogin,
     SubjectList,
+    FocusQualitySessionCreate,
+    FocusQualitySessionResponse,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -258,6 +260,56 @@ def update_subjects(
     db.commit()
 
     return {"message": "Subjects saved."}
+
+@app.post("/focus-quality-sessions")
+def create_focus_session(
+    request: Request,
+    session_data: FocusQualitySessionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if session_data.source != "chrome_extension":
+        raise HTTPException(status_code=400, detail="Focus quality must come from Chrome extension.")
+    
+    existing_session = (
+        db.query(FocusQualitySession)
+        .filter(
+            FocusQualitySession.user_id == current_user.id,
+            FocusQualitySession.completed_at == session_data.completed_at,
+        )
+        .first()
+    )
+
+    if existing_session is None:
+        existing_session = FocusQualitySession(user_id=current_user.id)
+        db.add(existing_session)
+    
+    existing_session.subject = session_data.subject.strip().lower()
+    existing_session.score = session_data.score
+    existing_session.focused_seconds = session_data.focused_seconds
+    existing_session.distracted_seconds = session_data.distracted_seconds
+    existing_session.idle_seconds = session_data.idle_seconds
+    existing_session.top_distracted_domain = session_data.top_distracted_domain or "none"
+    existing_session.completed_at = session_data.completed_at
+
+    db.commit() 
+
+    return {"message": "Focus quality session saved."}
+
+@app.get("/focus-quality-sessions", response_model=list[FocusQualitySessionResponse])
+def get_focus_quality_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sessions = (
+        db.query(FocusQualitySession)
+        .filter(FocusQualitySession.user_id == current_user.id)
+        .order_by(FocusQualitySession.completed_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return sessions
 
 @app.get("/profile-data", response_model=ProfileDataResponse)
 def get_profile_data(

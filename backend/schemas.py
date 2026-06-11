@@ -24,6 +24,25 @@ class FocusSessionCreate(BaseModel):
     completed: bool = True
     source: str = "focus_cli"
 
+class FocusQualitySessionCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=50)
+    score: int = Field(ge=0, le=100)
+    focused_seconds: int = Field(ge=0)
+    distracted_seconds: int = Field(ge=0)
+    idle_seconds: int = Field(ge=0)
+    top_distracted_domain: str | None = "none"
+    completed_at: str
+    source: str = "chrome_extension"
+
+class FocusQualitySessionResponse(BaseModel):
+    subject: str
+    score: int
+    focused_seconds: int
+    distracted_seconds: int
+    idle_seconds: int
+    top_distracted_domain: str | None = "none"
+    completed_at: str
+    
 class LeaderboardEntry(BaseModel):
     #leaderboard row
     display_name: str
