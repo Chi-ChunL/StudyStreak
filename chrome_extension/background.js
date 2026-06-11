@@ -188,7 +188,7 @@ async function uploadFocusQualitySession(summary, token) {
 
     const response = await fetch(`${API_BASE_URL}/focus-quality-sessions`, {
         method: "POST",
-        header: {
+        headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`
         },
