@@ -210,3 +210,23 @@ def upload_subjects(token: str, subjects: list[str]) -> None:
 
     if response.status_code != 200:
         raise_server_error("Subject sync", response)
+
+
+def get_focus_quality_sessions(token: str) -> list[dict]:
+    #download rich Chrome focus-quality summaries for the logged-in user
+    try:
+        response = requests.get(
+            f"{BASE_URL}/focus-quality-sessions",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Focus quality sync", response)
+
+    return response.json()

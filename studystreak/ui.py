@@ -18,7 +18,13 @@ from textual.widgets import (
     Checkbox,
 )
 
-from studystreak.storage import load_data, repair_data, save_data, save_focus_quality_json
+from studystreak.storage import (
+    load_data,
+    merge_focus_quality_sessions,
+    repair_data,
+    save_data,
+    save_focus_quality_json,
+)
 from studystreak.accounts import create_account, list_accounts, login_account, logout_account
 from studystreak.accounts import normalise_username, validate_password, validate_username
 from studystreak.session import set_session, clear_session, get_session_username, save_session_data, set_server_token, get_server_token
@@ -35,6 +41,7 @@ from studystreak.api_client import (
     get_leaderboard,
     check_server_status,
     get_profile_data,
+    get_focus_quality_sessions,
 )
 from studystreak.profile_sync import decrypt_profile_data
 from studystreak.notification import (
@@ -1621,6 +1628,7 @@ class StudyStreakApp(App):
                 private_data,
                 cloud_data,
             )
+            self.sync_focus_quality_from_server(server_token)
 
         except ValueError:
             self.show_temp_message(
@@ -1682,6 +1690,22 @@ class StudyStreakApp(App):
             return None
         
         return cloud_data
+
+    def sync_focus_quality_from_server(self, token=None):
+        #download authenticated Chrome focus summaries and merge them locally
+        token = token or get_server_token()
+
+        if token is None:
+            return 0
+
+        server_sessions = get_focus_quality_sessions(token)
+        data = load_data()
+        added_count = merge_focus_quality_sessions(data, server_sessions)
+
+        if added_count > 0:
+            save_data(data)
+
+        return added_count
 
     def use_newest_profile_after_login(
             self,
@@ -1885,6 +1909,7 @@ class StudyStreakApp(App):
                         private_data,
                         cloud_data,
                     )
+                    self.sync_focus_quality_from_server(server_token)
 
                 except ValueError:
                     self.show_temp_message(
@@ -1923,6 +1948,7 @@ class StudyStreakApp(App):
                     cloud_data,
                     prefer_cloud_when_equal=True,
                 )
+                self.sync_focus_quality_from_server(server_token)
 
                 self.show_temp_message(
                     "#login-message",
@@ -1976,6 +2002,7 @@ class StudyStreakApp(App):
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
                     save_data(private_data)
+                    self.sync_focus_quality_from_server(server_token)
                 except ValueError as error:
                     self.show_temp_message(
                         "#login-message",
@@ -2095,8 +2122,25 @@ class StudyStreakApp(App):
         if event.button.id == "sync-now-button":
             data = load_data()
             save_data(data)
+            try:
+                added_count = self.sync_focus_quality_from_server()
+            except ValueError as error:
+                self.update_sync_status()
+                self.show_temp_message("#sync-message", f"[red]{error}[/red]")
+                return
+
             self.update_sync_status()
-            self.show_temp_message("#sync-message", "[yellow]Sync started.[/yellow]")
+            if added_count > 0:
+                self.update_dashboard()
+                self.show_temp_message(
+                    "#sync-message",
+                    f"[green]Sync started. Added {added_count} Chrome focus updates.[/green]",
+                )
+            else:
+                self.show_temp_message(
+                    "#sync-message",
+                    "[yellow]Sync started. No new Chrome focus updates.[/yellow]",
+                )
             self.set_timer(2, self.update_sync_status)
             return
  

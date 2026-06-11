@@ -287,6 +287,59 @@ def normalise_focus_quality_session(raw_summary):
     return session
 
 
+def get_focus_quality_study_minutes(session):
+    focused_seconds = int(session.get("focused_seconds", 0))
+
+    if focused_seconds <= 0:
+        return 0
+
+    return max(1, int((focused_seconds + 30) // 60))
+
+
+def get_focus_quality_study_date(session):
+    completed_at = session["completed_at"]
+    completed_datetime = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    return str(completed_datetime.date())
+
+
+def merge_focus_quality_study_sessions(data, focus_quality_sessions):
+    existing_completed_at = {
+        session.get("completed_at")
+        for session in data.get("sessions", [])
+        if session.get("source") == "chrome_extension"
+        and session.get("completed_at")
+    }
+    added_count = 0
+
+    sorted_focus_sessions = sorted(
+        focus_quality_sessions,
+        key=lambda session: session.get("completed_at", ""),
+    )
+
+    for session in sorted_focus_sessions:
+        completed_at = session["completed_at"]
+
+        if completed_at in existing_completed_at:
+            continue
+
+        minutes = get_focus_quality_study_minutes(session)
+
+        if minutes <= 0:
+            continue
+
+        data["sessions"].append({
+            "subject": session["subject"],
+            "minutes": minutes,
+            "date": get_focus_quality_study_date(session),
+            "source": "chrome_extension",
+            "completed_at": completed_at,
+        })
+        existing_completed_at.add(completed_at)
+        added_count += 1
+
+    return added_count
+
+
 def save_focus_quality_session(raw_summary):
     data = load_data()
 
@@ -304,8 +357,47 @@ def save_focus_quality_session(raw_summary):
         ],
     ][:20]
 
+    merge_focus_quality_study_sessions(data, [session])
     save_data(data)
     return session
+
+
+def merge_focus_quality_sessions(data, server_sessions):
+    data = repair_data(data)
+
+    existing_sessions = data.get("focus_quality_sessions", [])
+    sessions_by_completed_at = {
+        session.get("completed_at"): session
+        for session in existing_sessions
+        if session.get("completed_at")
+    }
+    added_count = 0
+
+    for raw_session in server_sessions:
+        trusted_summary = {
+            **raw_session,
+            "source": "chrome_extension",
+        }
+        session = normalise_focus_quality_session(trusted_summary)
+        completed_at = session["completed_at"]
+
+        if completed_at not in sessions_by_completed_at:
+            added_count += 1
+
+        sessions_by_completed_at[completed_at] = session
+
+    data["focus_quality_sessions"] = sorted(
+        sessions_by_completed_at.values(),
+        key=lambda session: session.get("completed_at", ""),
+        reverse=True,
+    )[:20]
+
+    study_added_count = merge_focus_quality_study_sessions(
+        data,
+        sessions_by_completed_at.values(),
+    )
+
+    return added_count + study_added_count
 
 
 def save_focus_quality_json(raw_text):
