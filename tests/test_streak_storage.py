@@ -19,6 +19,7 @@ def load_storage_with_stubs():
 
     api_client_stub = types.ModuleType("studystreak.api_client")
     api_client_stub.upload_profile_data = lambda token, encrypted_profile_data: None
+    api_client_stub.upload_subject_websites = lambda token, subject_websites: None
     api_client_stub.upload_subjects = lambda token, subjects: None
     api_client_stub.upload_streak = lambda token, current_streak: None
     api_client_stub.upload_timetable = lambda token, timetable: None

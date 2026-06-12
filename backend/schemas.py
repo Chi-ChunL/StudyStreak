@@ -60,6 +60,9 @@ class ProfileDataResponse(BaseModel):
 class SubjectList(BaseModel):
     subjects: list[str] = Field(default_factory=list)
 
+class SubjectWebsiteList(BaseModel):
+    subject_websites: dict[str, list[str]] = Field(default_factory=dict)
+
 class StreakUpdate(BaseModel):
     current_streak: int = Field(ge=0, le=3650)
 

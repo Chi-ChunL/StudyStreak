@@ -652,6 +652,11 @@ TabPane {
     margin-bottom: 1;
 }
 
+#new-subject-website-input,
+#edit-website-input {
+    height: 5;
+}
+
 #subject-button-row,
 #edit-website-button-row,
 #delete-subject-button-row {

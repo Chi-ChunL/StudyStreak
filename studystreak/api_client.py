@@ -212,6 +212,27 @@ def upload_subjects(token: str, subjects: list[str]) -> None:
         raise_server_error("Subject sync", response)
 
 
+def upload_subject_websites(token: str, subject_websites: dict[str, list[str]]) -> None:
+    #upload subject website lists for the Chrome extension
+    try:
+        response = requests.put(
+            f"{BASE_URL}/subject-websites",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "subject_websites": subject_websites,
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Subject website sync", response)
+
+
 def upload_timetable(token: str, timetable: list[dict]) -> None:
     #upload timetable list for Chrome extension reminders
     try:

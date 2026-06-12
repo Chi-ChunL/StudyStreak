@@ -41,15 +41,16 @@
 
                         <label class="row">
                             <input id="reminders-enabled" type="checkbox">
-                            Daily reminder
+                            Timetable notification
                         </label>
 
-                        <label>
-                            Reminder time
-                            <input id="reminder-time" type="time">
-                        </label>
+                        <div class="field-block">
+                            <span class="field-label">Today</span>
+                            <div id="today-sessions" class="today-sessions">
+                                No sessions today.
+                            </div>
+                        </div>
 
-                        <button id="save-button">Save</button>
                         <button id="test-button">Test notification</button>
                     </section>
 
@@ -66,6 +67,7 @@
                             Focus websites
                             <textarea id="allowed-domains" rows="4"></textarea>
                         </label>
+                        <button id="save-button">Save Focus Websites</button>
 
                         <button id="start-focus-button">Start Focus</button>
                         <button id="stop-focus-button">Stop Focus</button>

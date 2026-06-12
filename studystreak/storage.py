@@ -20,6 +20,7 @@ from studystreak.session import (
 from studystreak.profile_sync import encrypt_profile_data
 from studystreak.api_client import (
     upload_profile_data,
+    upload_subject_websites,
     upload_subjects,
     upload_streak,
     upload_timetable,
@@ -113,6 +114,46 @@ def get_session_streak_days(data):
 
     return clean_streak_days(days)
 
+def clean_website_list(raw_websites):
+    if isinstance(raw_websites, str):
+        raw_items = raw_websites.replace(",", "\n").splitlines()
+    elif isinstance(raw_websites, list):
+        raw_items = raw_websites
+    else:
+        raw_items = []
+
+    websites = []
+
+    for raw_website in raw_items:
+        website = str(raw_website).strip()
+
+        if website == "":
+            continue
+
+        if not website.startswith("http://") and not website.startswith("https://"):
+            website = "https://" + website
+
+        if website not in websites:
+            websites.append(website)
+
+    return websites[:10]
+
+def clean_subject_websites(subject_websites):
+    if not isinstance(subject_websites, dict):
+        return {}
+
+    cleaned = {}
+
+    for subject, websites in subject_websites.items():
+        clean_subject = str(subject).strip().lower()
+
+        if clean_subject == "":
+            continue
+
+        cleaned[clean_subject] = clean_website_list(websites)
+
+    return cleaned
+
 def protect_streak_today(data):
     data = repair_data(data)
     today_text = get_today_text()
@@ -148,6 +189,8 @@ def repair_data(data):
     
     if "subject_websites" not in data:
         data["subject_websites"] = {}
+
+    data["subject_websites"] = clean_subject_websites(data["subject_websites"])
 
     if "timetable" not in data:
         data["timetable"] = []
@@ -587,6 +630,7 @@ def sync_profile_data(data):
         current_streak = calculate_streak_days(data.get("streak_days", []))
         upload_streak(token, current_streak)
         upload_subjects(token, data.get("subjects", []))
+        upload_subject_websites(token, data.get("subject_websites", {}))
         upload_timetable(token, data.get("timetable", []))
 
     except Exception as error:

@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
     focusHistory: [],
     focusSubject: "",
     syncedSubjects: [],
+    syncedSubjectWebsites: {},
     syncedTimetable: [],
     serverUsername: "",
     serverToken: ""
@@ -55,6 +56,13 @@ async function getSettings() {
         syncedSubjects: Array.isArray(saved.syncedSubjects)
             ? saved.syncedSubjects
             : [],
+        syncedSubjectWebsites: (
+            saved.syncedSubjectWebsites &&
+            typeof saved.syncedSubjectWebsites === "object" &&
+            !Array.isArray(saved.syncedSubjectWebsites)
+        )
+            ? saved.syncedSubjectWebsites
+            : {},
         syncedTimetable: Array.isArray(saved.syncedTimetable)
             ? saved.syncedTimetable
             : [],
@@ -87,6 +95,31 @@ function cleanSubjectList(subjects) {
     return subjects
         .map((subject) => String(subject).trim().toLowerCase())
         .filter(Boolean);
+}
+
+function cleanSubjectWebsiteMap(subjectWebsites) {
+    const cleaned = {};
+
+    if (!subjectWebsites || typeof subjectWebsites !== "object" || Array.isArray(subjectWebsites)) {
+        return cleaned;
+    }
+
+    Object.entries(subjectWebsites).forEach(([subject, websites]) => {
+        const cleanSubject = String(subject || "").trim().toLowerCase();
+        const websiteList = Array.isArray(websites) ? websites : [websites];
+
+        if (!cleanSubject) {
+            return;
+        }
+
+        cleaned[cleanSubject] = websiteList
+            .map((website) => cleanDomain(String(website || "")))
+            .filter(Boolean)
+            .filter((website, index, list) => list.indexOf(website) === index)
+            .slice(0, 10);
+    });
+
+    return cleaned;
 }
 
 function cleanTimetableList(timetable) {
@@ -132,6 +165,22 @@ async function fetchSubjectsFromServer(token) {
     return cleanSubjectList(data.subjects);
 }
 
+async function fetchSubjectWebsitesFromServer(token) {
+    const response = await fetch(`${API_BASE_URL}/subject-websites`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return cleanSubjectWebsiteMap(data.subject_websites);
+}
+
 async function fetchTimetableFromServer(token) {
     const response = await fetch(`${API_BASE_URL}/timetable`, {
         headers: {
@@ -160,10 +209,12 @@ async function refreshSubjectsFromServer() {
     }
 
     const subjects = await fetchSubjectsFromServer(settings.serverToken);
+    const subjectWebsites = await fetchSubjectWebsitesFromServer(settings.serverToken);
     const timetable = await fetchTimetableFromServer(settings.serverToken);
 
     await chrome.storage.local.set({
         syncedSubjects: subjects,
+        syncedSubjectWebsites: subjectWebsites,
         syncedTimetable: timetable
     });
     await scheduleTimetableReminders(timetable);
@@ -171,6 +222,7 @@ async function refreshSubjectsFromServer() {
     return {
         ok: true,
         subjects,
+        subjectWebsites,
         timetable
     };
 }
@@ -281,12 +333,19 @@ async function loginToServer(username, password) {
     }
 
     let subjects = [];
+    let subjectWebsites = {};
     let timetable = [];
 
     try {
         subjects = await fetchSubjectsFromServer(data.access_token);
     } catch {
         subjects = [];
+    }
+
+    try {
+        subjectWebsites = await fetchSubjectWebsitesFromServer(data.access_token);
+    } catch {
+        subjectWebsites = {};
     }
 
     try {
@@ -299,11 +358,12 @@ async function loginToServer(username, password) {
         serverUsername: cleanUsername,
         serverToken: data.access_token,
         syncedSubjects: subjects,
+        syncedSubjectWebsites: subjectWebsites,
         syncedTimetable: timetable
     });
     await scheduleTimetableReminders(timetable);
 
-    return { ok: true, serverUsername: cleanUsername, subjects, timetable };
+    return { ok: true, serverUsername: cleanUsername, subjects, subjectWebsites, timetable };
 }
 
 async function logoutFromServer() {
@@ -317,6 +377,7 @@ async function logoutFromServer() {
         focusLastCheckedAt: null,
         focusSubject: "",
         syncedSubjects: [],
+        syncedSubjectWebsites: {},
         syncedTimetable: []
     });
 
@@ -359,6 +420,20 @@ function isAllowedDomain(domain, allowedDomains) {
     });
 }
 
+function getAllowedDomainsForFocus(settings) {
+    const subject = String(settings.focusSubject || "").trim().toLowerCase();
+    const subjectWebsites = settings.syncedSubjectWebsites || {};
+    const subjectDomains = Array.isArray(subjectWebsites[subject])
+        ? subjectWebsites[subject]
+        : [];
+
+    if (subjectDomains.length > 0) {
+        return subjectDomains;
+    }
+
+    return settings.allowedDomains;
+}
+
 async function getActiveTabDomain() {
     const [tab] = await chrome.tabs.query({
         active: true,
@@ -381,7 +456,7 @@ async function getCurrentFocusCategory(settings) {
         return { category: "distracted", domain: "browser page" };
     }
 
-    if (isAllowedDomain(domain, settings.allowedDomains)) {
+    if (isAllowedDomain(domain, getAllowedDomainsForFocus(settings))) {
         return { category: "focused", domain };
     }
 

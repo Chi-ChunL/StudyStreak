@@ -22,6 +22,7 @@ from backend.schemas import(
     UserCreate,
     UserLogin,
     SubjectList,
+    SubjectWebsiteList,
     TimetableList,
     FocusQualitySessionCreate,
     FocusQualitySessionResponse,
@@ -43,6 +44,12 @@ with engine.connect() as connection:
     if "subjects_json" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN subjects_json TEXT")
+        )
+        connection.commit()
+
+    if "subject_websites_json" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN subject_websites_json TEXT")
         )
         connection.commit()
 
@@ -236,6 +243,33 @@ def clean_subjects(subjects: list[str]) -> list[str]:
 
     return cleaned_subjects[:50]
 
+def clean_subject_websites(subject_websites: dict[str, list[str]]) -> dict[str, list[str]]:
+    cleaned = {}
+
+    if not isinstance(subject_websites, dict):
+        return cleaned
+
+    for subject, websites in subject_websites.items():
+        clean_subject = str(subject).strip().lower()
+
+        if not clean_subject or len(clean_subject) > 50:
+            continue
+
+        if not isinstance(websites, list):
+            websites = [websites]
+
+        clean_websites = []
+
+        for website in websites:
+            clean_website = str(website).strip().lower()
+
+            if clean_website and clean_website not in clean_websites:
+                clean_websites.append(clean_website)
+
+        cleaned[clean_subject] = clean_websites[:10]
+
+    return cleaned
+
 @app.get("/subjects", response_model=SubjectList)
 def get_subjects(current_user: User = Depends(get_current_user)):
     if not current_user.subjects_json:
@@ -262,6 +296,37 @@ def update_subjects(
     db.commit()
 
     return {"message": "Subjects saved."}
+
+@app.get("/subject-websites", response_model=SubjectWebsiteList)
+def get_subject_websites(current_user: User = Depends(get_current_user)):
+    if not current_user.subject_websites_json:
+        return SubjectWebsiteList(subject_websites={})
+
+    try:
+        subject_websites = json.loads(current_user.subject_websites_json)
+    except json.JSONDecodeError:
+        subject_websites = {}
+
+    if not isinstance(subject_websites, dict):
+        subject_websites = {}
+
+    return SubjectWebsiteList(
+        subject_websites=clean_subject_websites(subject_websites)
+    )
+
+
+@app.put("/subject-websites")
+def update_subject_websites(
+    subject_website_data: SubjectWebsiteList,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.subject_websites_json = json.dumps(
+        clean_subject_websites(subject_website_data.subject_websites)
+    )
+    db.commit()
+
+    return {"message": "Subject websites saved."}
 
 @app.get("/timetable", response_model=TimetableList)
 def get_timetable(current_user: User = Depends(get_current_user)):

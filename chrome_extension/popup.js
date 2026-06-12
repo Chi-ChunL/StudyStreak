@@ -1,5 +1,4 @@
 const remindersEnabled = document.querySelector("#reminders-enabled");
-const reminderTime = document.querySelector("#reminder-time");
 const saveButton = document.querySelector("#save-button");
 const testButton = document.querySelector("#test-button");
 const statusText = document.querySelector("#status");
@@ -25,6 +24,7 @@ const loginButton = document.querySelector("#login-button");
 const logoutButton = document.querySelector("#logout-button");
 const tabButtons = document.querySelectorAll(".side-tab-button");
 const tabPanels = document.querySelectorAll(".tab-panel");
+const todaySessions = document.querySelector("#today-sessions");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
@@ -93,6 +93,54 @@ function formatQualityUpload(summary) {
 
     return summary.qualityUpload?.error || "Not synced";
 }
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+
+function getTodayDayName() {
+    return DAY_NAMES[new Date().getDay()];
+}
+
+
+function getTodayTimetableSessions(settings = currentSettings) {
+    const timetable = Array.isArray(settings?.syncedTimetable)
+        ? settings.syncedTimetable
+        : [];
+
+    return timetable
+        .filter((session) => session.day === getTodayDayName())
+        .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+}
+
+
+function renderTodaySessions(settings = currentSettings) {
+    const sessions = getTodayTimetableSessions(settings);
+
+    if (!todaySessions) {
+        return;
+    }
+
+    if (sessions.length === 0) {
+        todaySessions.textContent = "No sessions today.";
+        return;
+    }
+
+    todaySessions.innerHTML = sessions
+        .map((session) => {
+            const subject = session.subject || "unknown";
+            const startTime = session.start_time || "--:--";
+            const minutes = Number(session.minutes) || 0;
+
+            return `
+                <div class="today-session-item">
+                    <strong>${subject}</strong>
+                    <span>${startTime} - ${minutes} min</span>
+                </div>
+            `;
+        })
+        .join("");
+}
+
 
 function renderCompletedSummary(summary) {
     latestCompletedFocusSession = summary || null;
@@ -286,7 +334,6 @@ async function loadSettings() {
         }
 
         remindersEnabled.checked = state.settings.remindersEnabled;
-        reminderTime.value = state.settings.reminderTime;
         allowedDomains.value = state.settings.allowedDomains.join("\n");
 
         currentSettings = {
@@ -294,6 +341,7 @@ async function loadSettings() {
             ...state.settings
         };
 
+        renderTodaySessions(currentSettings);
         renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
@@ -336,6 +384,8 @@ async function loginToServer() {
         syncedSubjects: result.subjects || [],
         syncedTimetable: result.timetable || []
     };
+
+    renderTodaySessions(currentSettings);
     renderSubjectOptions(currentSettings.syncedSubjects, "");
     renderAccount(currentSettings);
     statusText.textContent = currentSettings.syncedSubjects.length > 0
@@ -355,6 +405,8 @@ async function logoutFromServer() {
         syncedTimetable: [],
         focusSubject: ""
     };
+
+    renderTodaySessions(currentSettings);
     renderSubjectOptions([], "");
     renderAccount(currentSettings);
     statusText.textContent = "Logged out.";
@@ -381,6 +433,7 @@ async function refreshSubjects() {
         syncedTimetable: result.timetable || []
     };
 
+    renderTodaySessions(currentSettings);
     renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
     setAccountGate(currentSettings);
     const timetableCount = Array.isArray(result.timetable) ? result.timetable.length : 0;
@@ -398,7 +451,6 @@ async function saveSettings(showMessage = true) {
         type: "saveSettings",
         settings: {
             remindersEnabled: remindersEnabled.checked,
-            reminderTime: reminderTime.value || "17:00",
             allowedDomains: parseDomains(allowedDomains.value)
         }
     });
@@ -406,6 +458,24 @@ async function saveSettings(showMessage = true) {
     if (showMessage) {
         statusText.textContent = "Saved.";
     }
+}
+
+async function saveReminderToggle() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
+    await chrome.runtime.sendMessage({
+        type: "saveSettings",
+        settings: {
+            remindersEnabled: remindersEnabled.checked,
+            allowedDomains: parseDomains(allowedDomains.value)
+        }
+    });
+
+    statusText.textContent = remindersEnabled.checked
+        ? "Timetable notifications enabled."
+        : "Timetable notifications disabled.";
 }
 
 async function testNotification() {
@@ -595,6 +665,7 @@ tabButtons.forEach((button) => {
     });
 });
 
+remindersEnabled.addEventListener("change", saveReminderToggle);
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
 refreshSubjectsButton.addEventListener("click", refreshSubjects);

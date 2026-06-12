@@ -160,3 +160,21 @@ h3 {
 [hidden] {
     display: none !important;
 }
+
+.today-sessions {
+    border: 2px solid #9b8468;
+    padding: 12px;
+    min-height: 48px;
+    background: #fff8ea;
+}
+
+.today-session-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.today-session-item + .today-session-item {
+    border-top: 1px solid #d8c5a8;
+}

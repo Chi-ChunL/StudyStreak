@@ -19,6 +19,7 @@ from textual.widgets import (
 )
 
 from studystreak.storage import (
+    clean_website_list,
     load_data,
     merge_focus_quality_sessions,
     protect_streak_today,
@@ -95,6 +96,12 @@ def format_website_url(website):
         website = "https://" + website
  
     return website
+
+def format_website_list_text(websites):
+    return "\n".join(clean_website_list(websites))
+
+def get_subject_website_list(data, subject):
+    return clean_website_list(data.get("subject_websites", {}).get(str(subject), []))
  
 def calculate_current_streak(data):
     study_dates = set(data.get("streak_days", []))
@@ -886,8 +893,8 @@ class StudyStreakApp(App):
                                         id="new-subject-input",
                                     )
  
-                                    yield Input(
-                                        placeholder="Study website for this subject, e.g. https://senecalearning.com",
+                                    yield TextArea(
+                                        "",
                                         id="new-subject-website-input",
                                     )
  
@@ -906,8 +913,8 @@ class StudyStreakApp(App):
                                         prompt="Choose a subject",
                                     )
  
-                                    yield Input(
-                                        placeholder="New website, e.g. https://senecalearning.com",
+                                    yield TextArea(
+                                        "",
                                         id="edit-website-input",
                                     )
  
@@ -1563,20 +1570,20 @@ class StudyStreakApp(App):
                 website_input.value = ""
                 return
  
-            saved_website = data["subject_websites"].get(str(selected_subject), "")
-            website_input.value = saved_website
+            saved_websites = get_subject_website_list(data, selected_subject)
+            website_input.value = saved_websites[0] if saved_websites else ""
             return
  
         if event.select.id == "edit-website-subject-select":
             selected_subject = event.value
-            edit_website_input = self.query_one("#edit-website-input", Input)
+            edit_website_input = self.query_one("#edit-website-input", TextArea)
  
             if is_blank_select_value(selected_subject):
-                edit_website_input.value = ""
+                edit_website_input.load_text("")
                 return
  
-            saved_website = data["subject_websites"].get(str(selected_subject), "")
-            edit_website_input.value = saved_website
+            saved_websites = get_subject_website_list(data, selected_subject)
+            edit_website_input.load_text(format_website_list_text(saved_websites))
     
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if self.logged_in:
@@ -2296,17 +2303,15 @@ class StudyStreakApp(App):
  
         if event.button.id == "add-subject-button":
             new_subject_input = self.query_one("#new-subject-input", Input)
-            new_subject_website_input = self.query_one("#new-subject-website-input", Input)
+            new_subject_website_input = self.query_one("#new-subject-website-input", TextArea)
             subject_message = self.query_one("#subject-message", Static)
  
             new_subject = new_subject_input.value.strip().lower()
-            website = new_subject_website_input.value.strip()
+            websites = clean_website_list(new_subject_website_input.text)
  
             if new_subject == "":
                 self.show_temp_message("#subject-message", "[red]Please enter a subject name.[/red]")
                 return
- 
-            website = format_website_url(website)
  
             data = load_data()
  
@@ -2317,32 +2322,32 @@ class StudyStreakApp(App):
             data["subjects"].append(new_subject)
             data["subjects"].sort()
  
-            data["subject_websites"][new_subject] = website
+            data["subject_websites"][new_subject] = websites
  
             save_data(data)
  
             self.update_dashboard()
             self.unlock_earned_achievements()
  
-            if website == "":
+            if len(websites) == 0:
                 self.show_temp_message("#subject-message", f"[green]Added subject: {new_subject}[/green]")
             else:
                 self.show_temp_message(
                     "#subject-message",
-                    f"[green]Added subject: {new_subject} with website: {website}[/green]",
+                    f"[green]Added subject: {new_subject} with {len(websites)} website(s).[/green]",
                 )
  
             new_subject_input.value = ""
-            new_subject_website_input.value = ""
+            new_subject_website_input.load_text("")
             return
  
         if event.button.id == "update-website-button":
             edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
-            edit_website_input = self.query_one("#edit-website-input", Input)
+            edit_website_input = self.query_one("#edit-website-input", TextArea)
             edit_website_message = self.query_one("#edit-website-message", Static)
  
             selected_subject = edit_website_subject_select.value
-            website = edit_website_input.value.strip()
+            websites = clean_website_list(edit_website_input.text)
  
             if is_blank_select_value(selected_subject):
                 self.show_temp_message("#edit-website-message", "[yellow]Please choose a subject first.[/yellow]")
@@ -2355,22 +2360,20 @@ class StudyStreakApp(App):
                 self.update_dashboard()
                 return
  
-            website = format_website_url(website)
- 
-            data["subject_websites"][str(selected_subject)] = website
+            data["subject_websites"][str(selected_subject)] = websites
             save_data(data)
  
             self.update_dashboard()
  
-            if website == "":
+            if len(websites) == 0:
                 self.show_temp_message(
                     "#edit-website-message",
-                    f"[yellow]Cleared website for {selected_subject}.[/yellow]",
+                    f"[yellow]Cleared websites for {selected_subject}.[/yellow]",
                 )
             else:
                 self.show_temp_message(
                     "#edit-website-message",
-                    f"[green]Updated website for {selected_subject}: {website}[/green]",
+                    f"[green]Updated {selected_subject} with {len(websites)} website(s).[/green]",
                 )
  
             return
@@ -2402,7 +2405,8 @@ class StudyStreakApp(App):
                 return
  
             if website == "":
-                website = data["subject_websites"].get(str(subject), "")
+                saved_websites = get_subject_website_list(data, subject)
+                website = saved_websites[0] if saved_websites else ""
  
             if website == "":
                 self.show_temp_message("#focus-message", "[red]No website saved for this subject. Please enter one manually.[/red]")
