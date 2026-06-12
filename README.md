@@ -6,6 +6,12 @@
 
 StudyStreak is a terminal study tracker that helps students build consistent study habits. It includes streak tracking, session logging, timetable planning, focus mode, achievements, leaderboard sync, and a Chrome companion extension for focus-quality tracking.
 
+## Preview
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Chi-ChunL/StudyStreak/main/assets/studystreak-dashboard.png" alt="StudyStreak dashboard screenshot" width="85%">
+</p>
+
 ## Install
 
 StudyStreak requires Python 3.10 or newer.
