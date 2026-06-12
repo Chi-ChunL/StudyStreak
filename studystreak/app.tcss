@@ -285,6 +285,10 @@ TabPane {
     margin-bottom: 1;
 }
 
+#focus-website-input {
+    height: 5;
+}
+
 #focus-quality-title {
     margin-top: 2;
     text-align: center;

@@ -1,13 +1,20 @@
 body {
     width: 430px;
+    height: 560px;
     margin: 0;
     background: #f3e7cf;
     color: #2c211c;
     font-family: monospace;
+    overflow: hidden;
 }
 
 main {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    height: 560px;
     padding: 16px;
+    overflow: hidden;
 }
 
 h1 {
@@ -89,8 +96,19 @@ button:disabled {
 }
 
 #status {
-    min-height: 20px;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    min-height: 18px;
+    max-height: 42px;
+    margin: 6px 0 0;
+    padding: 6px 0 0;
+    border-top: 2px solid #d4bd95;
+    background: #f3e7cf;
     color: #00706f;
+    line-height: 1.35;
+    overflow-y: auto;
+    white-space: normal;
 }
 
 #last-focus-summary {
@@ -124,6 +142,10 @@ h3 {
 .popup-shell {
     display: flex;
     gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 6px;
 }
 
 .side-tabs {

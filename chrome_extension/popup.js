@@ -25,13 +25,15 @@ const logoutButton = document.querySelector("#logout-button");
 const tabButtons = document.querySelectorAll(".side-tab-button");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const todaySessions = document.querySelector("#today-sessions");
+const strictFocusEnabled = document.querySelector("#strict-focus-enabled");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
     serverUsername: "",
     serverToken: "",
     focusActive: false,
-    syncedSubjects: []
+    syncedSubjects: [],
+    syncedSubjectWebsites: {}
 };
 
 const EMPTY_SUMMARY = {
@@ -112,6 +114,21 @@ function getTodayTimetableSessions(settings = currentSettings) {
         .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
 }
 
+function getSubjectWebsites(subject, settings = currentSettings) {
+    const subjectWebsites = settings?.syncedSubjectWebsites || {};
+    const cleanSubject = String(subject || "").trim().toLowerCase();
+    const websites = subjectWebsites[cleanSubject];
+
+    return Array.isArray(websites) ? websites : [];
+}
+
+function renderFocusWebsitesForSubject(subject) {
+    const websites = getSubjectWebsites(subject);
+
+    allowedDomains.value = websites.length > 0
+        ? websites.join("\n")
+        : currentSettings.allowedDomains.join("\n");
+}
 
 function renderTodaySessions(settings = currentSettings) {
     const sessions = getTodayTimetableSessions(settings);
@@ -213,6 +230,8 @@ function renderSubjectOptions(subjects, selectedSubject = "") {
     focusSubject.value = safeSubjects.includes(selectedSubject)
         ? selectedSubject
         : "";
+    
+    renderFocusWebsitesForSubject(focusSubject.value);
 
     focusSubject.disabled = !isLoggedIn(currentSettings) || currentSettings.focusActive;
 }
@@ -296,6 +315,7 @@ function setAccountGate(settings) {
     clearHistoryButton.disabled = !loggedIn;
     refreshSubjectsButton.disabled = !loggedIn;
     focusSubject.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
+    strictFocusEnabled.disabled = !loggedIn;
 
     if (!loggedIn) {
         showPopupTab("account");
@@ -335,6 +355,7 @@ async function loadSettings() {
 
         remindersEnabled.checked = state.settings.remindersEnabled;
         allowedDomains.value = state.settings.allowedDomains.join("\n");
+        strictFocusEnabled.checked = Boolean(state.settings.strictFocusEnabled);
 
         currentSettings = {
             ...currentSettings,
@@ -382,6 +403,7 @@ async function loginToServer() {
         serverUsername: result.serverUsername,
         serverToken: "saved",
         syncedSubjects: result.subjects || [],
+        syncedSubjectWebsites: result.subjectWebsites || {},
         syncedTimetable: result.timetable || []
     };
 
@@ -402,6 +424,7 @@ async function logoutFromServer() {
         serverUsername: "",
         serverToken: "",
         syncedSubjects: [],
+        syncedSubjectWebsites: {},
         syncedTimetable: [],
         focusSubject: ""
     };
@@ -430,6 +453,7 @@ async function refreshSubjects() {
     currentSettings = {
         ...currentSettings,
         syncedSubjects: result.subjects || [],
+        syncedSubjectWebsites: result.subjectWebsites || {},
         syncedTimetable: result.timetable || []
     };
 
@@ -451,6 +475,7 @@ async function saveSettings(showMessage = true) {
         type: "saveSettings",
         settings: {
             remindersEnabled: remindersEnabled.checked,
+            strictFocusEnabled: strictFocusEnabled.checked,
             allowedDomains: parseDomains(allowedDomains.value)
         }
     });
@@ -469,6 +494,7 @@ async function saveReminderToggle() {
         type: "saveSettings",
         settings: {
             remindersEnabled: remindersEnabled.checked,
+            strictFocusEnabled: strictFocusEnabled.checked,
             allowedDomains: parseDomains(allowedDomains.value)
         }
     });
@@ -666,6 +692,10 @@ tabButtons.forEach((button) => {
 });
 
 remindersEnabled.addEventListener("change", saveReminderToggle);
+focusSubject.addEventListener("change", () => {
+    renderFocusWebsitesForSubject(focusSubject.value);
+});
+strictFocusEnabled.addEventListener("change", saveSettings);
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
 refreshSubjectsButton.addEventListener("click", refreshSubjects);

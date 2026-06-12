@@ -772,8 +772,8 @@ class StudyStreakApp(App):
                         prompt="Choose a subject",
                     )
  
-                    yield Input(
-                        placeholder="Study website, e.g. https://senecalearning.com",
+                    yield TextArea(
+                        "",
                         id="focus-website-input",
                     )
  
@@ -1564,14 +1564,14 @@ class StudyStreakApp(App):
 
         if event.select.id == "focus-subject-select":
             selected_subject = event.value
-            website_input = self.query_one("#focus-website-input", Input)
+            website_input = self.query_one("#focus-website-input", TextArea)
  
             if is_blank_select_value(selected_subject):
-                website_input.value = ""
+                website_input.load_text("")
                 return
  
             saved_websites = get_subject_website_list(data, selected_subject)
-            website_input.value = saved_websites[0] if saved_websites else ""
+            website_input.load_text(format_website_list_text(saved_websites))
             return
  
         if event.select.id == "edit-website-subject-select":
@@ -2393,30 +2393,33 @@ class StudyStreakApp(App):
  
         if event.button.id == "open-website-button":
             focus_subject_select = self.query_one("#focus-subject-select", Select)
-            website_input = self.query_one("#focus-website-input", Input)
-            focus_message = self.query_one("#focus-message", Static)
- 
+            website_input = self.query_one("#focus-website-input", TextArea)
+
             subject = focus_subject_select.value
-            website = website_input.value.strip()
+            websites = clean_website_list(website_input.text)
             data = load_data()
- 
+
             if is_blank_select_value(subject):
                 self.show_temp_message("#focus-message", "[red]Please choose a subject first.[/red]")
                 return
- 
-            if website == "":
-                saved_websites = get_subject_website_list(data, subject)
-                website = saved_websites[0] if saved_websites else ""
- 
-            if website == "":
-                self.show_temp_message("#focus-message", "[red]No website saved for this subject. Please enter one manually.[/red]")
+
+            if len(websites) == 0:
+                websites = get_subject_website_list(data, subject)
+
+            if len(websites) == 0:
+                self.show_temp_message(
+                    "#focus-message",
+                    "[red]No websites saved for this subject. Please enter one manually.[/red]",
+                )
                 return
- 
-            website = format_website_url(website)
- 
-            webbrowser.open(website)
- 
-            self.show_temp_message("#focus-message", f"[green]Opened study website: {website}[/green]")
+
+            for website in websites:
+                webbrowser.open(website)
+
+            self.show_temp_message(
+                "#focus-message",
+                f"[green]Opened {len(websites)} website(s) for {subject}.[/green]",
+            )
             return
         
         if event.button.id == "show-timetable-form-button":

@@ -15,7 +15,6 @@ const DEFAULT_STATS = {
 
 const DEFAULT_SETTINGS = {
     remindersEnabled: true,
-    reminderTime: "17:00",
     allowedDomains: ["pearsonactivelearn.com", "quizlet.com", "senecalearning.com"],
     focusActive: false,
     focusStartedAt: null,
@@ -28,7 +27,8 @@ const DEFAULT_SETTINGS = {
     syncedSubjectWebsites: {},
     syncedTimetable: [],
     serverUsername: "",
-    serverToken: ""
+    serverToken: "",
+    strictFocusEnabled: false,
 };
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
@@ -69,6 +69,7 @@ async function getSettings() {
         serverUsername: typeof saved.serverUsername === "string" ? saved.serverUsername : "",
         serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: "",
         focusSubject: typeof saved.focusSubject === "string" ? saved.focusSubject: "",
+        strictFocusEnabled: Boolean(saved.strictFocusEnabled),
     };
 }
 
@@ -540,8 +541,13 @@ async function recordFocusElapsed() {
 async function startFocus(subject) {
     const settings = await getSettings();
     const now = Date.now();
-    const current = await getCurrentFocusCategory(settings);
     const cleanSubject = String(subject || "").trim().toLowerCase()
+    const focusSettings = {
+        ...settings,
+        focusActive: true,
+        focusSubject: cleanSubject
+    };
+    const current = await getCurrentFocusCategory(focusSettings);
 
     const stats = {
         ...DEFAULT_STATS,
@@ -562,6 +568,8 @@ async function startFocus(subject) {
         periodInMinutes: 1
     });
 
+    await enforceStrictFocus(focusSettings);
+    
     return getFocusSummary({
         ...settings,
         focusActive: true,
@@ -629,19 +637,6 @@ async function stopFocus() {
     return completedSummaryWithUpload;
 }
 
-function getNextReminderTime(timeValue) {
-    const [hours, minutes] = timeValue.split(":").map(Number);
-    const next = new Date();
-
-    next.setHours(hours, minutes, 0, 0);
-
-    if (next.getTime() <= Date.now()) {
-        next.setDate(next.getDate() + 1);
-    }
-
-    return next.getTime();
-}
-
 function getNextTimetableTime(dayValue, timeValue) {
     const dayIndex = {
         Sun: 0,
@@ -696,18 +691,7 @@ async function scheduleTimetableReminders(timetable = null) {
 }
 
 async function scheduleDailyReminder() {
-    const settings = await getSettings();
-
     await chrome.alarms.clear(DAILY_REMINDER_ALARM);
-
-    if (!settings.remindersEnabled) {
-        return;
-    }
-
-    await chrome.alarms.create(DAILY_REMINDER_ALARM, {
-        when: getNextReminderTime(settings.reminderTime),
-        periodInMinutes: 1440
-    });
 }
 
 async function showStudyReminder(isTest = false) {
@@ -770,11 +754,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.tabs.onActivated.addListener(() => {
     recordFocusElapsed();
+    enforceStrictFocus().catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.url || changeInfo.status === "complete") {
         recordFocusElapsed();
+        enforceStrictFocus().catch(() => {});
     }
 });
 
@@ -858,3 +844,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleMessage().then(sendResponse);
     return true;
 });
+
+async function enforceStrictFocus(settings = null) {
+    settings = settings || await getSettings();
+
+    if (!settings.focusActive || !settings.strictFocusEnabled) {
+        return;
+    }
+
+    const allowedDomains = getAllowedDomainsForFocus(settings);
+
+    if (allowedDomains.length === 0) {
+        return;
+    }
+
+    const [tab] = await chrome.tabs.query({
+        active: true,
+        lastFocusedWindow: true
+    });
+
+    if (!tab?.id || !tab?.url) {
+        return;
+    }
+
+    const currentDomain = getDomainFromUrl(tab.url);
+
+    if (!currentDomain || isAllowedDomain(currentDomain, allowedDomains)) {
+        return;
+    }
+
+    const redirectDomain = allowedDomains[
+        Math.floor(Math.random() * allowedDomains.length)
+    ];
+    const redirectUrl = redirectDomain.startsWith("http://") ||
+        redirectDomain.startsWith("https://")
+        ? redirectDomain
+        : `https://${redirectDomain}`;
+
+    await chrome.tabs.update(tab.id, {
+        url: redirectUrl
+    });
+}

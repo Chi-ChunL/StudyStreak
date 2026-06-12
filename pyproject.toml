@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "studystreak"
+version = "0.1.0"
+description = "A terminal study streak tracker with Chrome focus sync."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer",
+    "rich",
+    "textual",
+    "argon2-cffi",
+    "cryptography",
+    "pwinput",
+    "keyring",
+    "requests",
+    "python-dotenv",
+    "plyer",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+]
+
+[project.urls]
+Homepage = "https://github.com/Chi-ChunL/StudyStreak"
+Repository = "https://github.com/Chi-ChunL/StudyStreak"
+
+[project.scripts]
+studystreak = "studystreak.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["studystreak*"]
+exclude = ["backend*", "chrome_extension*", "tests*"]
+
+[tool.setuptools.package-data]
+studystreak = ["app.tcss", "assets/sounds/*.wav"]

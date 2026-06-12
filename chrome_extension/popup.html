@@ -67,6 +67,10 @@
                             Focus websites
                             <textarea id="allowed-domains" rows="4"></textarea>
                         </label>
+                        <label class="row">
+                            <input id="strict-focus-enabled" type="checkbox">
+                            Strict Focus
+                        </label>
                         <button id="save-button">Save Focus Websites</button>
 
                         <button id="start-focus-button">Start Focus</button>
@@ -98,7 +102,7 @@
                 </div>
             </div>
 
-            <p id="status"></p>
+            <p id="status" role="status" aria-live="polite"></p>
         </main>
 
         <script src="popup.js"></script>
