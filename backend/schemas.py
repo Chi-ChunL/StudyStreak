@@ -62,3 +62,12 @@ class SubjectList(BaseModel):
 
 class StreakUpdate(BaseModel):
     current_streak: int = Field(ge=0, le=3650)
+
+class TimetableSession(BaseModel):
+    subject: str = Field(min_length=1, max_length=50)
+    day: str = Field(pattern="^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$")
+    start_time: str = Field(pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    minutes: int = Field(gt=0, le=720)
+
+class TimetableList(BaseModel):
+    timetable: list[TimetableSession] = Field(default_factory=list, max_length=100)

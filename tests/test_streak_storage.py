@@ -21,6 +21,7 @@ def load_storage_with_stubs():
     api_client_stub.upload_profile_data = lambda token, encrypted_profile_data: None
     api_client_stub.upload_subjects = lambda token, subjects: None
     api_client_stub.upload_streak = lambda token, current_streak: None
+    api_client_stub.upload_timetable = lambda token, timetable: None
 
     sys.modules["studystreak.session"] = session_stub
     sys.modules["studystreak.profile_sync"] = profile_sync_stub

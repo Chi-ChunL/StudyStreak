@@ -333,7 +333,8 @@ async function loginToServer() {
         ...currentSettings,
         serverUsername: result.serverUsername,
         serverToken: "saved",
-        syncedSubjects: result.subjects || []
+        syncedSubjects: result.subjects || [],
+        syncedTimetable: result.timetable || []
     };
     renderSubjectOptions(currentSettings.syncedSubjects, "");
     renderAccount(currentSettings);
@@ -351,6 +352,7 @@ async function logoutFromServer() {
         serverUsername: "",
         serverToken: "",
         syncedSubjects: [],
+        syncedTimetable: [],
         focusSubject: ""
     };
     renderSubjectOptions([], "");
@@ -375,13 +377,15 @@ async function refreshSubjects() {
 
     currentSettings = {
         ...currentSettings,
-        syncedSubjects: result.subjects || []
+        syncedSubjects: result.subjects || [],
+        syncedTimetable: result.timetable || []
     };
 
     renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
     setAccountGate(currentSettings);
+    const timetableCount = Array.isArray(result.timetable) ? result.timetable.length : 0;
     statusText.textContent = currentSettings.syncedSubjects.length > 0
-        ? "Subjects refreshed."
+        ? `Subjects refreshed. ${timetableCount} timetable reminders scheduled.`
         : "No synced subjects yet.";
 }
 

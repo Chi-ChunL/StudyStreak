@@ -1,6 +1,7 @@
 const DAILY_REMINDER_ALARM = "studystreak-daily-reminder";
 const API_BASE_URL = "https://chichi.hackclub.app";
 const FOCUS_TICK_ALARM = "studystreak-focus-tick";
+const TIMETABLE_ALARM_PREFIX = "studystreak-timetable-";
 
 
 const DEFAULT_STATS = {
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS = {
     focusHistory: [],
     focusSubject: "",
     syncedSubjects: [],
+    syncedTimetable: [],
     serverUsername: "",
     serverToken: ""
 };
@@ -52,6 +54,9 @@ async function getSettings() {
             : [],
         syncedSubjects: Array.isArray(saved.syncedSubjects)
             ? saved.syncedSubjects
+            : [],
+        syncedTimetable: Array.isArray(saved.syncedTimetable)
+            ? saved.syncedTimetable
             : [],
         serverUsername: typeof saved.serverUsername === "string" ? saved.serverUsername : "",
         serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: "",
@@ -84,6 +89,33 @@ function cleanSubjectList(subjects) {
         .filter(Boolean);
 }
 
+function cleanTimetableList(timetable) {
+    const validDays = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+
+    if (!Array.isArray(timetable)) {
+        return [];
+    }
+
+    return timetable
+        .map((item) => {
+            return {
+                subject: String(item?.subject || "").trim().toLowerCase(),
+                day: String(item?.day || "").trim(),
+                start_time: String(item?.start_time || "").trim(),
+                minutes: Number(item?.minutes) || 0
+            };
+        })
+        .filter((item) => {
+            return (
+                item.subject &&
+                validDays.has(item.day) &&
+                /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(item.start_time) &&
+                item.minutes > 0
+            );
+        })
+        .slice(0, 100);
+}
+
 async function fetchSubjectsFromServer(token) {
     const response = await fetch(`${API_BASE_URL}/subjects`, {
         headers: {
@@ -100,6 +132,22 @@ async function fetchSubjectsFromServer(token) {
     return cleanSubjectList(data.subjects);
 }
 
+async function fetchTimetableFromServer(token) {
+    const response = await fetch(`${API_BASE_URL}/timetable`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return cleanTimetableList(data.timetable);
+}
+
 async function refreshSubjectsFromServer() {
     const settings = await getSettings();
 
@@ -112,14 +160,18 @@ async function refreshSubjectsFromServer() {
     }
 
     const subjects = await fetchSubjectsFromServer(settings.serverToken);
+    const timetable = await fetchTimetableFromServer(settings.serverToken);
 
     await chrome.storage.local.set({
-        syncedSubjects: subjects
+        syncedSubjects: subjects,
+        syncedTimetable: timetable
     });
+    await scheduleTimetableReminders(timetable);
 
     return {
         ok: true,
-        subjects
+        subjects,
+        timetable
     };
 }
 
@@ -229,6 +281,7 @@ async function loginToServer(username, password) {
     }
 
     let subjects = [];
+    let timetable = [];
 
     try {
         subjects = await fetchSubjectsFromServer(data.access_token);
@@ -236,17 +289,26 @@ async function loginToServer(username, password) {
         subjects = [];
     }
 
+    try {
+        timetable = await fetchTimetableFromServer(data.access_token);
+    } catch {
+        timetable = [];
+    }
+
     await chrome.storage.local.set({
         serverUsername: cleanUsername,
         serverToken: data.access_token,
-        syncedSubjects: subjects
+        syncedSubjects: subjects,
+        syncedTimetable: timetable
     });
+    await scheduleTimetableReminders(timetable);
 
-    return { ok: true, serverUsername: cleanUsername, subjects };
+    return { ok: true, serverUsername: cleanUsername, subjects, timetable };
 }
 
 async function logoutFromServer() {
     await chrome.alarms.clear(FOCUS_TICK_ALARM);
+    await clearTimetableReminders();
 
     await chrome.storage.local.set({
         serverUsername: "",
@@ -254,7 +316,8 @@ async function logoutFromServer() {
         focusActive: false,
         focusLastCheckedAt: null,
         focusSubject: "",
-        syncedSubjects: []
+        syncedSubjects: [],
+        syncedTimetable: []
     });
 
     return { ok: true };
@@ -504,6 +567,59 @@ function getNextReminderTime(timeValue) {
     return next.getTime();
 }
 
+function getNextTimetableTime(dayValue, timeValue) {
+    const dayIndex = {
+        Sun: 0,
+        Mon: 1,
+        Tue: 2,
+        Wed: 3,
+        Thu: 4,
+        Fri: 5,
+        Sat: 6
+    }[dayValue];
+    const [hours, minutes] = timeValue.split(":").map(Number);
+    const next = new Date();
+
+    next.setHours(hours, minutes, 0, 0);
+
+    const daysUntilSession = (dayIndex - next.getDay() + 7) % 7;
+    next.setDate(next.getDate() + daysUntilSession);
+
+    if (next.getTime() <= Date.now()) {
+        next.setDate(next.getDate() + 7);
+    }
+
+    return next.getTime();
+}
+
+async function clearTimetableReminders() {
+    const alarms = await chrome.alarms.getAll();
+
+    await Promise.all(
+        alarms
+            .filter((alarm) => alarm.name.startsWith(TIMETABLE_ALARM_PREFIX))
+            .map((alarm) => chrome.alarms.clear(alarm.name))
+    );
+}
+
+async function scheduleTimetableReminders(timetable = null) {
+    const settings = await getSettings();
+    const sessions = cleanTimetableList(timetable || settings.syncedTimetable);
+
+    await clearTimetableReminders();
+
+    if (!settings.remindersEnabled) {
+        return;
+    }
+
+    sessions.forEach((session, index) => {
+        chrome.alarms.create(`${TIMETABLE_ALARM_PREFIX}${index}`, {
+            when: getNextTimetableTime(session.day, session.start_time),
+            periodInMinutes: 10080
+        });
+    });
+}
+
 async function scheduleDailyReminder() {
     const settings = await getSettings();
 
@@ -529,8 +645,27 @@ async function showStudyReminder(isTest = false) {
     });
 }
 
+async function showTimetableReminder(alarmName) {
+    const settings = await getSettings();
+    const index = Number(alarmName.replace(TIMETABLE_ALARM_PREFIX, ""));
+    const session = cleanTimetableList(settings.syncedTimetable)[index];
+
+    if (!settings.remindersEnabled || !session) {
+        return;
+    }
+
+    await chrome.notifications.create({
+        type: "basic",
+        iconUrl: ICON_URL,
+        title: "StudyStreak timetable",
+        message: `${session.subject} starts now. Planned for ${session.minutes} min.`,
+        priority: 1
+    });
+}
+
 async function restoreExtension() {
     await scheduleDailyReminder();
+    await scheduleTimetableReminders();
 
     const settings = await getSettings();
 
@@ -547,6 +682,10 @@ chrome.runtime.onStartup.addListener(restoreExtension);
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === DAILY_REMINDER_ALARM) {
         showStudyReminder(false);
+    }
+
+    if (alarm.name.startsWith(TIMETABLE_ALARM_PREFIX)) {
+        showTimetableReminder(alarm.name);
     }
 
     if (alarm.name === FOCUS_TICK_ALARM) {
@@ -594,6 +733,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === "saveSettings") {
             await chrome.storage.local.set(message.settings);
             await scheduleDailyReminder();
+            await scheduleTimetableReminders();
             return { ok: true };
         }
 

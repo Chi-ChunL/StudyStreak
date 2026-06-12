@@ -212,6 +212,27 @@ def upload_subjects(token: str, subjects: list[str]) -> None:
         raise_server_error("Subject sync", response)
 
 
+def upload_timetable(token: str, timetable: list[dict]) -> None:
+    #upload timetable list for Chrome extension reminders
+    try:
+        response = requests.put(
+            f"{BASE_URL}/timetable",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "timetable": timetable,
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Timetable sync", response)
+
+
 def get_focus_quality_sessions(token: str) -> list[dict]:
     #download rich Chrome focus-quality summaries for the logged-in user
     try:

@@ -55,3 +55,4 @@ def decrypt_text(encrypted_text: str, password: str, salt: str) -> str:
 
     decrypted_text = fernet.decrypt(encrypted_text.encode("utf-8"))
     return decrypted_text.decode("utf-8")
+

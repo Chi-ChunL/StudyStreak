@@ -18,7 +18,12 @@ from studystreak.session import (
 )
 
 from studystreak.profile_sync import encrypt_profile_data
-from studystreak.api_client import upload_profile_data, upload_subjects, upload_streak
+from studystreak.api_client import (
+    upload_profile_data,
+    upload_subjects,
+    upload_streak,
+    upload_timetable,
+)
 
 
 DATA_FILE = Path("study_data.json")
@@ -582,6 +587,7 @@ def sync_profile_data(data):
         current_streak = calculate_streak_days(data.get("streak_days", []))
         upload_streak(token, current_streak)
         upload_subjects(token, data.get("subjects", []))
+        upload_timetable(token, data.get("timetable", []))
 
     except Exception as error:
         update_sync_result_if_current(

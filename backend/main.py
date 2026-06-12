@@ -22,6 +22,7 @@ from backend.schemas import(
     UserCreate,
     UserLogin,
     SubjectList,
+    TimetableList,
     FocusQualitySessionCreate,
     FocusQualitySessionResponse,
     StreakUpdate,
@@ -42,6 +43,12 @@ with engine.connect() as connection:
     if "subjects_json" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN subjects_json TEXT")
+        )
+        connection.commit()
+
+    if "timetable_json" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN timetable_json TEXT")
         )
         connection.commit()
     
@@ -255,6 +262,36 @@ def update_subjects(
     db.commit()
 
     return {"message": "Subjects saved."}
+
+@app.get("/timetable", response_model=TimetableList)
+def get_timetable(current_user: User = Depends(get_current_user)):
+    if not current_user.timetable_json:
+        return TimetableList(timetable=[])
+
+    try:
+        timetable = json.loads(current_user.timetable_json)
+    except json.JSONDecodeError:
+        timetable = []
+
+    if not isinstance(timetable, list):
+        timetable = []
+
+    return TimetableList(timetable=timetable)
+
+
+@app.put("/timetable")
+def update_timetable(
+    timetable_data: TimetableList,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.timetable_json = json.dumps([
+        item.model_dump()
+        for item in timetable_data.timetable
+    ])
+    db.commit()
+
+    return {"message": "Timetable saved."}
 
 @app.post("/focus-quality-sessions")
 def create_focus_quality_session(
