@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Chi-ChunL/StudyStreak/main/assets/studystreak-banner.png" alt="StudyStreak banner" width="100%">
+</p>
+
 # StudyStreak
 
 StudyStreak is a terminal study tracker that helps students build consistent study habits. It includes streak tracking, session logging, timetable planning, focus mode, achievements, leaderboard sync, and a Chrome companion extension for focus-quality tracking.
