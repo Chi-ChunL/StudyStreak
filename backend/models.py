@@ -17,6 +17,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     encrypted_profile_data = Column(String, nullable=True)
     subjects_json = Column(String, nullable=True)
+    current_streak = Column(Integer, default=0, nullable=False)
 
     focus_sessions = relationship(
         "FocusSession",

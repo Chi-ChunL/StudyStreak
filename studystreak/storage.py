@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 import hmac
 import hashlib
 
@@ -18,7 +18,7 @@ from studystreak.session import (
 )
 
 from studystreak.profile_sync import encrypt_profile_data
-from studystreak.api_client import upload_profile_data, upload_subjects
+from studystreak.api_client import upload_profile_data, upload_subjects, upload_streak
 
 
 DATA_FILE = Path("study_data.json")
@@ -30,6 +30,7 @@ _sync_worker_running = False
 def get_default_data():
     return {
         "sessions": [],
+        "streak_days": [],
         "focus_quality_sessions": [],
         "weekly_goal": 300,
         "subjects": [],
@@ -67,10 +68,66 @@ def get_default_data():
 def get_utc_now_text():
     return datetime.now(timezone.utc).isoformat()
 
+def get_today_text():
+    return str(date.today())
+
+def clean_streak_days(raw_days):
+    today = date.today()
+    cleaned_days = []
+
+    if not isinstance(raw_days, list):
+        return []
+
+    for raw_day in raw_days:
+        day_text = str(raw_day).strip()
+
+        try:
+            day = date.fromisoformat(day_text)
+        except ValueError:
+            continue
+
+        if day > today:
+            continue
+
+        if day_text not in cleaned_days:
+            cleaned_days.append(day_text)
+
+    return sorted(cleaned_days)
+
+def get_session_streak_days(data):
+    days = []
+
+    for session in data.get("sessions", []):
+        if session.get("source") == "chrome_extension":
+            continue
+
+        day_text = str(session.get("date", "")).strip()
+
+        if day_text and day_text not in days:
+            days.append(day_text)
+
+    return clean_streak_days(days)
+
+def protect_streak_today(data):
+    data = repair_data(data)
+    today_text = get_today_text()
+
+    if today_text in data["streak_days"]:
+        return False
+
+    data["streak_days"].append(today_text)
+    data["streak_days"] = clean_streak_days(data["streak_days"])
+    return True
+
 def repair_data(data):
     #repair missing data keys
     if "sessions" not in data:
         data["sessions"] = []
+
+    if "streak_days" not in data:
+        data["streak_days"] = get_session_streak_days(data)
+    else:
+        data["streak_days"] = clean_streak_days(data["streak_days"])
     
     if "focus_quality_sessions" not in data:
         data["focus_quality_sessions"] = []
@@ -299,17 +356,27 @@ def get_focus_quality_study_minutes(session):
 def get_focus_quality_study_date(session):
     completed_at = session["completed_at"]
     completed_datetime = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    if completed_datetime.tzinfo is not None:
+        completed_datetime = completed_datetime.astimezone()
+
     return str(completed_datetime.date())
 
 
+def focus_quality_session_protects_today(session):
+    return (
+        get_focus_quality_study_minutes(session) > 0
+        and get_focus_quality_study_date(session) == get_today_text()
+    )
+
+
 def merge_focus_quality_study_sessions(data, focus_quality_sessions):
-    existing_completed_at = {
-        session.get("completed_at")
+    existing_sessions_by_completed_at = {
+        session.get("completed_at"): session
         for session in data.get("sessions", [])
         if session.get("source") == "chrome_extension"
         and session.get("completed_at")
     }
-    added_count = 0
+    changed_count = 0
 
     sorted_focus_sessions = sorted(
         focus_quality_sessions,
@@ -318,26 +385,34 @@ def merge_focus_quality_study_sessions(data, focus_quality_sessions):
 
     for session in sorted_focus_sessions:
         completed_at = session["completed_at"]
-
-        if completed_at in existing_completed_at:
-            continue
-
         minutes = get_focus_quality_study_minutes(session)
 
         if minutes <= 0:
             continue
 
-        data["sessions"].append({
+        study_session = {
             "subject": session["subject"],
             "minutes": minutes,
             "date": get_focus_quality_study_date(session),
             "source": "chrome_extension",
             "completed_at": completed_at,
-        })
-        existing_completed_at.add(completed_at)
-        added_count += 1
+        }
+        existing_session = existing_sessions_by_completed_at.get(completed_at)
 
-    return added_count
+        if existing_session is None:
+            data["sessions"].append(study_session)
+            existing_sessions_by_completed_at[completed_at] = study_session
+            changed_count += 1
+            continue
+
+        if any(
+            existing_session.get(key) != value
+            for key, value in study_session.items()
+        ):
+            existing_session.update(study_session)
+            changed_count += 1
+
+    return changed_count
 
 
 def save_focus_quality_session(raw_summary):
@@ -358,6 +433,8 @@ def save_focus_quality_session(raw_summary):
     ][:20]
 
     merge_focus_quality_study_sessions(data, [session])
+    if focus_quality_session_protects_today(session):
+        protect_streak_today(data)
     save_data(data)
     return session
 
@@ -396,8 +473,13 @@ def merge_focus_quality_sessions(data, server_sessions):
         data,
         sessions_by_completed_at.values(),
     )
+    protected_today = any(
+        focus_quality_session_protects_today(session)
+        for session in sessions_by_completed_at.values()
+    )
+    streak_added_count = 1 if protected_today and protect_streak_today(data) else 0
 
-    return added_count + study_added_count
+    return added_count + study_added_count + streak_added_count
 
 
 def save_focus_quality_json(raw_text):
@@ -450,6 +532,17 @@ def run_sync_worker():
         except Exception:
             pass
 
+def calculate_streak_days(streak_days):
+    protected_days = set(clean_streak_days(streak_days))
+    current_day = date.today()
+    streak_count = 0
+
+    while str(current_day) in protected_days:
+        streak_count += 1
+        current_day = current_day - timedelta(days=1)
+    
+    return streak_count
+
 def update_sync_result_if_current(data, synced_at=None, error_message=None):
     #ignore results from an upload if a newer local save already exists
     try:
@@ -486,6 +579,8 @@ def sync_profile_data(data):
 
         encrypted_profile_data = encrypt_profile_data(data, username, password)
         upload_profile_data(token, encrypted_profile_data)
+        current_streak = calculate_streak_days(data.get("streak_days", []))
+        upload_streak(token, current_streak)
         upload_subjects(token, data.get("subjects", []))
 
     except Exception as error:

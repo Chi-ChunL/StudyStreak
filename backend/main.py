@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import case, func, text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import os
@@ -24,6 +24,7 @@ from backend.schemas import(
     SubjectList,
     FocusQualitySessionCreate,
     FocusQualitySessionResponse,
+    StreakUpdate,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -41,6 +42,12 @@ with engine.connect() as connection:
     if "subjects_json" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN subjects_json TEXT")
+        )
+        connection.commit()
+    
+    if "current_streak" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN current_streak INTEGER DEFAULT 0 NOT NULL")
         )
         connection.commit()
 
@@ -169,19 +176,8 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
     query = (
         db.query(
             User.display_name,
+            User.current_streak,
             func.sum(FocusSession.minutes).label("total_minutes"),
-            func.sum(
-                case(
-                    (FocusSession.source == "chrome_extension", 0),
-                    else_=FocusSession.minutes,
-                )
-            ).label("app_minutes"),
-            func.sum(
-                case(
-                    (FocusSession.source == "chrome_extension", FocusSession.minutes),
-                    else_=0,
-                )
-            ).label("chrome_minutes"),
         )
         .join(FocusSession)
         .filter(FocusSession.completed.is_(True))
@@ -217,8 +213,7 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         LeaderboardEntry(
             display_name=result.display_name,
             total_minutes=result.total_minutes,
-            app_minutes=result.app_minutes,
-            chrome_minutes=result.chrome_minutes,
+            current_streak=result.current_streak or 0,
         )
         for result in results
     ]
@@ -332,3 +327,13 @@ def update_profile_data(
 
     return {"message": "Profile data saved"}
 
+@app.put("/streak")
+def update_streak(
+    streak_data: StreakUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.current_streak = streak_data.current_streak
+    db.commit()
+
+    return {"message": "Streak saved."}

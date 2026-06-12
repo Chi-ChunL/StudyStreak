@@ -42,13 +42,12 @@ class FocusQualitySessionResponse(BaseModel):
     idle_seconds: int
     top_distracted_domain: str | None = "none"
     completed_at: str
-    
+
 class LeaderboardEntry(BaseModel):
     #leaderboard row
     display_name: str
     total_minutes: int
-    app_minutes: int = 0
-    chrome_minutes: int = 0
+    current_streak: int = 0
 
 class ProfileDataUpdate(BaseModel):
     #encrypted profile upload
@@ -60,3 +59,6 @@ class ProfileDataResponse(BaseModel):
 
 class SubjectList(BaseModel):
     subjects: list[str] = Field(default_factory=list)
+
+class StreakUpdate(BaseModel):
+    current_streak: int = Field(ge=0, le=3650)

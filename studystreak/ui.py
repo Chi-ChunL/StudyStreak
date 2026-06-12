@@ -21,6 +21,7 @@ from textual.widgets import (
 from studystreak.storage import (
     load_data,
     merge_focus_quality_sessions,
+    protect_streak_today,
     repair_data,
     save_data,
     save_focus_quality_json,
@@ -96,10 +97,7 @@ def format_website_url(website):
     return website
  
 def calculate_current_streak(data):
-    study_dates = set()
- 
-    for session in data["sessions"]:
-        study_dates.add(session["date"])
+    study_dates = set(data.get("streak_days", []))
  
     current_day = date.today()
     streak_count = 0
@@ -175,12 +173,7 @@ def get_weekly_goal_status(current, goal):
  
 def has_studied_today(data):
     today_date = str(date.today())
- 
-    for session in data["sessions"]:
-        if session["date"] == today_date:
-            return True
- 
-    return False
+    return today_date in data.get("streak_days", [])
  
  
 def get_recent_sessions(data, limit=5):
@@ -644,6 +637,7 @@ class StudyStreakApp(App):
     leaderboard_period = "all"
     last_notified_sync_error = None
     editing_timetable_index = None
+    chrome_sync_protected_streak = False
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -981,6 +975,7 @@ class StudyStreakApp(App):
         data = load_data()
  
         streak_count = calculate_current_streak(data)
+        streak_protected_today = "Yes" if has_studied_today(data) else "No"
         today_minutes = calculate_today_minutes(data)
         today_sessions = calculate_today_sessions(data)
         weekly_minutes = calculate_weekly_minutes(data)
@@ -1014,6 +1009,7 @@ class StudyStreakApp(App):
  
         dashboard.update(
             f"[bold]Current streak:[/bold] {streak_count} days\n"
+            f"[bold]Streak protected today:[/bold] {streak_protected_today}\n"
             f"[bold]Studied today:[/bold] {today_minutes} minutes\n"
             f"[bold]Sessions today:[/bold] {today_sessions}\n"
             f"[bold]Weekly goal:[/bold] {weekly_minutes} / {weekly_goal} minutes\n"
@@ -1475,6 +1471,7 @@ class StudyStreakApp(App):
         }
  
         data["sessions"].append(session)
+        protect_streak_today(data)
         save_data(data)
         
         server_token = get_server_token()
@@ -1696,16 +1693,30 @@ class StudyStreakApp(App):
         token = token or get_server_token()
 
         if token is None:
-            return 0
+            return {
+                "updates": 0,
+                "streak_protected": False,
+            }
 
         server_sessions = get_focus_quality_sessions(token)
         data = load_data()
+        already_studied_today = has_studied_today(data)
         added_count = merge_focus_quality_sessions(data, server_sessions)
+        streak_protected = (
+            not already_studied_today
+            and has_studied_today(data)
+        )
 
         if added_count > 0:
             save_data(data)
 
-        return added_count
+        if streak_protected:
+            self.chrome_sync_protected_streak = True
+
+        return {
+            "updates": added_count,
+            "streak_protected": streak_protected,
+        }
 
     def use_newest_profile_after_login(
             self,
@@ -1797,6 +1808,17 @@ class StudyStreakApp(App):
             self.sync_status_timer = self.set_interval(2, self.update_sync_status)
         self.update_dashboard()
         self.refresh_leaderboard()
+        if self.chrome_sync_protected_streak:
+            self.chrome_sync_protected_streak = False
+            achievement_unlocked = self.unlock_earned_achievements()
+            data = load_data()
+            streak_count = calculate_current_streak(data)
+            self.show_temp_message(
+                "#global-message",
+                "[green]Chrome focus synced. Streak protected.[/green]",
+            )
+            if not achievement_unlocked:
+                self.show_streak_effect(streak_count)
 
     def refresh_leaderboard(self):
         #refresh server leaderboard
@@ -1840,12 +1862,12 @@ class StudyStreakApp(App):
         lines = [f"[bold]{period_titles[period]} Leaderboard[/bold]"]
 
         for index, row in enumerate(rows, start=1):
-            app_minutes = row.get("app_minutes", 0)
-            chrome_minutes = row.get("chrome_minutes", 0)
+            current_streak = row.get("current_streak", 0)
+            streak_word = "day" if current_streak == 1 else "days"
 
             lines.append(
                 f"{index}. {row['display_name']} - {row['total_minutes']} minutes "
-                f"(App {app_minutes}m, Chrome {chrome_minutes}m)"
+                f"- Streak {current_streak} {streak_word}"
             )
         leaderboard.update("\n".join(lines))
 
@@ -2123,15 +2145,30 @@ class StudyStreakApp(App):
             data = load_data()
             save_data(data)
             try:
-                added_count = self.sync_focus_quality_from_server()
+                sync_result = self.sync_focus_quality_from_server()
             except ValueError as error:
                 self.update_sync_status()
                 self.show_temp_message("#sync-message", f"[red]{error}[/red]")
                 return
 
+            added_count = sync_result["updates"]
+            streak_protected = sync_result["streak_protected"]
             self.update_sync_status()
             if added_count > 0:
                 self.update_dashboard()
+                achievement_unlocked = self.unlock_earned_achievements()
+                if streak_protected:
+                    self.chrome_sync_protected_streak = False
+                    data = load_data()
+                    streak_count = calculate_current_streak(data)
+                    self.show_temp_message(
+                        "#sync-message",
+                        "[green]Chrome focus synced. Streak protected.[/green]",
+                    )
+                    if not achievement_unlocked:
+                        self.show_streak_effect(streak_count)
+                    return
+
                 self.show_temp_message(
                     "#sync-message",
                     f"[green]Sync started. Added {added_count} Chrome focus updates.[/green]",
@@ -2776,6 +2813,7 @@ class StudyStreakApp(App):
             }
  
             data["sessions"].append(session)
+            protect_streak_today(data)
             save_data(data)
  
             self.update_dashboard()

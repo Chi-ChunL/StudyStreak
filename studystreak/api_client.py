@@ -230,3 +230,21 @@ def get_focus_quality_sessions(token: str) -> list[dict]:
         raise_server_error("Focus quality sync", response)
 
     return response.json()
+
+def upload_streak(token: str, current_streak: int) -> None:
+    try:
+        response = requests.put(
+            f"{BASE_URL}/streak",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "current_streak": current_streak,
+            },
+            timeout=10,
+        )
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+    
+    if response.status_code !=200:
+        raise_server_error("Streak sync", response)
