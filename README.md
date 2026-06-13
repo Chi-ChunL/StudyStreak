@@ -51,9 +51,9 @@ studystreak logout
 studystreak users
 ```
 
-## Chrome Extension
+## Browser Extension
 
-The Chrome extension adds browser focus tracking. It can:
+The companion browser extension adds focus tracking. It can:
 
 - Start and stop focus sessions
 - Detect focused, distracted, and idle time
@@ -62,7 +62,26 @@ The Chrome extension adds browser focus tracking. It can:
 - Send timetable reminders
 - Optionally enable Strict Focus to redirect distracting sites
 
-To use it locally, clone this repository and load the `chrome_extension` folder as an unpacked extension in Chrome.
+To install it locally, clone this repository first:
+
+```bash
+git clone https://github.com/Chi-ChunL/StudyStreak.git
+```
+
+Chrome:
+
+1. Open `chrome://extensions`
+2. Turn on `Developer mode`
+3. Click `Load unpacked`
+4. Choose the `chrome_extension` folder
+
+Firefox or Zen:
+
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click `Load Temporary Add-on`
+3. Choose `chrome_extension/manifest.json`
+
+Temporary Firefox/Zen add-ons need to be loaded again after restarting the browser. A signed release will make this smoother later.
 
 ## Cloud Sync
 
