@@ -1,11 +1,13 @@
 import json
-from pathlib import Path
 
 import keyring
 
+from studystreak.paths import get_app_data_file, migrate_legacy_file
+
 
 APP_NAME = "StudyStreak"
-CACHE_FILE = Path("auth_cache.json")
+CACHE_FILE = get_app_data_file("auth_cache.json")
+migrate_legacy_file("auth_cache.json", CACHE_FILE)
 
 def save_remembered_login(username: str, password: str) -> None:
     #save remembered login securely

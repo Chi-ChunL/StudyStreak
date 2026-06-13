@@ -17,8 +17,16 @@ from studystreak.accounts import (
 from studystreak.session import set_session, clear_session
 
 
-app = typer.Typer()
+app = typer.Typer(invoke_without_command=True)
 console = Console()
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    # Make the PyPI command feel like an app launcher.
+    if ctx.invoked_subcommand is None:
+        study_app = StudyStreakApp()
+        study_app.run()
 
 
 def calculate_streak(data):

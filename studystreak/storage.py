@@ -1,6 +1,5 @@
 import json
 from copy import deepcopy
-from pathlib import Path
 from threading import Lock, Thread
 from typing import Any
 from uuid import uuid4
@@ -17,6 +16,7 @@ from studystreak.session import (
     get_server_token,
 )
 
+from studystreak.paths import get_app_data_file, migrate_legacy_file
 from studystreak.profile_sync import encrypt_profile_data
 from studystreak.api_client import (
     upload_profile_data,
@@ -27,7 +27,8 @@ from studystreak.api_client import (
 )
 
 
-DATA_FILE = Path("study_data.json")
+DATA_FILE = get_app_data_file("study_data.json")
+migrate_legacy_file("study_data.json", DATA_FILE)
 _SYNC_LOCK = Lock()
 _latest_sync_snapshot = None
 _sync_worker_running = False

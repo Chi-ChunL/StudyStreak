@@ -52,6 +52,7 @@ from studystreak.notification import (
     show_sync_failed_notification,
     show_achievement_notification,
 )
+from studystreak.paths import get_app_data_dir
 
 
 
@@ -187,7 +188,11 @@ def get_recent_sessions(data, limit=5):
     sessions = data["sessions"]
  
     if len(sessions) == 0:
-        return "No study sessions logged yet."
+        return (
+            "[bold]Recent study sessions[/bold]\n"
+            "No sessions yet.\n"
+            "Next: open Log Session or Focus Mode to record your first study block."
+        )
  
     recent_sessions = sessions[-limit:]
     recent_sessions.reverse()
@@ -350,7 +355,10 @@ def get_today_timetable_display(data):
     ]
 
     if len(today_items) == 0:
-        return f"No timetable sessions planned for {today_name}."
+        return (
+            f"No timetable sessions planned for {today_name}.\n"
+            "Next: use Add Session to plan your next study block."
+        )
 
     today_items.sort(key=lambda item: item["start_time"])
 
@@ -402,7 +410,11 @@ def get_subject_stats(data):
     lines = ["[bold]Subject Stats[/bold]"]
 
     if len(subject_total) == 0 and len(focus_by_subject) == 0:
-        return "No study sessions logged yet."
+        return (
+            "[bold]Subject Stats[/bold]\n"
+            "No subject stats yet.\n"
+            "Next: log a session or sync a Chrome focus session."
+        )
 
     all_subjects = sorted(set(subject_total) | set(focus_by_subject))
 
@@ -462,7 +474,10 @@ def get_focus_quality_summary(data):
     sessions = data.get("focus_quality_sessions", [])
 
     if len(sessions) == 0:
-        return "No imported Chrome focus summaries yet."
+        return (
+            "No Chrome focus summaries yet.\n"
+            "Next: stop a Chrome focus session online, or import signed JSON as a fallback."
+        )
 
     latest_session = sessions[0]
     return (
@@ -474,6 +489,89 @@ def get_focus_quality_summary(data):
         f"Top distraction: {latest_session.get('top_distracted_domain', 'none')}\n"
         f"Imported summaries: {len(sessions)}"
     )
+
+
+def format_setup_item(done, name, next_step):
+    status = "[green]Done[/green]" if done else "[yellow]Next[/yellow]"
+    if done:
+        return f"{status} - {name}"
+
+    return f"{status} - {name}: {next_step}"
+
+
+def get_setup_checklist(data, logged_in, server_online, server_token):
+    subjects = data.get("subjects", [])
+    subject_websites = data.get("subject_websites", {})
+    has_subject_websites = any(subject_websites.get(subject) for subject in subject_websites)
+    has_any_session = len(data.get("sessions", [])) > 0
+    has_timetable = len(data.get("timetable", [])) > 0
+    has_chrome_data = len(data.get("focus_quality_sessions", [])) > 0
+    cloud_ready = server_token is not None and server_online is not False
+
+    items = [
+        (logged_in, "Account", "log in or create an account."),
+        (cloud_ready, "Cloud sync", "connect to the server so your data can sync."),
+        (len(subjects) > 0, "Subjects", "add subjects in Settings > Subjects."),
+        (has_subject_websites, "Subject websites", "save allowed websites for each subject."),
+        (has_timetable, "Timetable", "add your first planned session."),
+        (has_any_session, "First study session", "log a session or complete Focus Mode."),
+        (has_chrome_data, "Chrome focus data", "use the Chrome extension and stop a focus session."),
+    ]
+
+    incomplete_items = [
+        format_setup_item(done, name, next_step)
+        for done, name, next_step in items
+        if not done
+    ]
+
+    if len(incomplete_items) == 0:
+        return (
+            "[bold]Setup checklist[/bold]\n"
+            "[green]Done[/green] - StudyStreak is fully set up on this device."
+        )
+
+    return "\n".join([
+        "[bold]Setup checklist[/bold]",
+        *incomplete_items[:5],
+    ])
+
+
+def get_setup_health_display(data, logged_in, server_online, server_token):
+    sync_data = data.get("sync", {})
+    last_sync_error = sync_data.get("last_sync_error")
+    last_cloud_sync = sync_data.get("last_cloud_sync")
+    subjects = data.get("subjects", [])
+    timetable = data.get("timetable", [])
+    focus_sessions = data.get("focus_quality_sessions", [])
+
+    if server_online is True:
+        server_status = "[green]Connected[/green]"
+    elif server_online is False:
+        server_status = "[red]Offline[/red]"
+    else:
+        server_status = "[yellow]Checking[/yellow]"
+
+    if last_sync_error:
+        sync_status = f"[red]Failed[/red] - {last_sync_error}"
+    elif last_cloud_sync:
+        sync_status = "[green]Synced[/green]"
+    else:
+        sync_status = "[yellow]Not synced yet[/yellow]"
+
+    account_status = "[green]Logged in[/green]" if logged_in else "[yellow]Login needed[/yellow]"
+    cloud_status = "[green]Ready[/green]" if server_token is not None else "[yellow]Not logged in online[/yellow]"
+
+    return "\n".join([
+        f"[bold]Account:[/bold] {account_status}",
+        f"[bold]Server:[/bold] {server_status}",
+        f"[bold]Cloud login:[/bold] {cloud_status}",
+        f"[bold]Sync:[/bold] {sync_status}",
+        f"[bold]Subjects:[/bold] {len(subjects)}",
+        f"[bold]Subject website sets:[/bold] {len(data.get('subject_websites', {}))}",
+        f"[bold]Timetable sessions:[/bold] {len(timetable)}",
+        f"[bold]Chrome focus summaries:[/bold] {len(focus_sessions)}",
+        f"[bold]Data folder:[/bold] {get_app_data_dir()}",
+    ])
 
 ACHIEVEMENTS = [
     {
@@ -645,6 +743,7 @@ class StudyStreakApp(App):
     last_notified_sync_error = None
     editing_timetable_index = None
     chrome_sync_protected_streak = False
+    server_is_online = None
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -676,6 +775,7 @@ class StudyStreakApp(App):
 
             with TabbedContent(initial="dashboard-tab"):
                 with TabPane("Dashboard", id="dashboard-tab"):
+                    yield Static("", id="setup-checklist")
                     yield Static("", id="dashboard")
                     yield Static("", id="recent-sessions")
  
@@ -812,6 +912,7 @@ class StudyStreakApp(App):
                     with Horizontal(id="settings-layout"):
                         with Vertical(id="settings-sidebar"):
                             yield Button("Weekly Goal", id="settings-weekly-button")
+                            yield Button("Setup Health", id="settings-health-button")
                             yield Button("Sync", id="settings-sync-button")
                             yield Button("Appearance", id="settings-appearance-button")
                             yield Button("Sounds", id="settings-sounds-button")
@@ -831,6 +932,10 @@ class StudyStreakApp(App):
                                     yield Button("Save Goal", id="save-goal-button")
  
                                 yield Static("", id="settings-message")
+
+                            with Vertical(id="setup-health-panel"):
+                                yield Static("Setup health", id="setup-health-title")
+                                yield Static("", id="setup-health-details")
 
                             with Vertical(id="sync-panel"):
                                 yield Static("Cloud sync", id="sync-panel-title")
@@ -952,10 +1057,12 @@ class StudyStreakApp(App):
         main_container.display = False
 
         subjects_panel = self.query_one("#subjects-panel")
+        setup_health_panel = self.query_one("#setup-health-panel")
         sync_panel = self.query_one("#sync-panel")
         appearance_panel = self.query_one("#appearance-panel")
 
         subjects_panel.display = False
+        setup_health_panel.display = False
         sync_panel.display = False
         appearance_panel.display = False
 
@@ -992,6 +1099,7 @@ class StudyStreakApp(App):
 
 
         dashboard = self.query_one("#dashboard", Static)
+        setup_checklist = self.query_one("#setup-checklist", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
         subject_stats = self.query_one("#subject-stats", Static)
         session_select = self.query_one("#session-select", Select)
@@ -1014,6 +1122,15 @@ class StudyStreakApp(App):
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
+        setup_checklist.update(
+            get_setup_checklist(
+                data,
+                self.logged_in,
+                self.server_is_online,
+                get_server_token(),
+            )
+        )
+
         dashboard.update(
             f"[bold]Current streak:[/bold] {streak_count} days\n"
             f"[bold]Streak protected today:[/bold] {streak_protected_today}\n"
@@ -1055,6 +1172,7 @@ class StudyStreakApp(App):
         achievements.update(get_achievement_display(data))
 
         self.update_sync_status()
+        self.update_setup_health_panel()
 
     def update_sync_status(self):
         sync_status_label = self.query_one("#sync-status-label", Static)
@@ -1070,6 +1188,7 @@ class StudyStreakApp(App):
         if last_sync_error is not None:
             sync_status_label.update("[red]Sync: Failed[/red]")
             sync_details.update(f"[red]{last_sync_error}[/red]")
+            self.update_setup_health_panel()
             
             if self.last_notified_sync_error != last_sync_error:
                 self.last_notified_sync_error = last_sync_error
@@ -1080,11 +1199,13 @@ class StudyStreakApp(App):
         if last_cloud_sync is None:
             sync_status_label.update("[yellow]Sync: Not synced yet[/yellow]")
             sync_details.update("[yellow]This device has not uploaded cloud data yet.[/yellow]")
+            self.update_setup_health_panel()
             return
         
         if last_local_update is None:
             sync_status_label.update("[green]Sync: Synced[/green]")
             sync_details.update("[green]Cloud sync is up to date.[/green]")
+            self.update_setup_health_panel()
             return
         
         if last_cloud_sync >= last_local_update:
@@ -1094,6 +1215,19 @@ class StudyStreakApp(App):
         else:
             sync_status_label.update("[yellow]Sync: Pending upload[/yellow]")
             sync_details.update("[yellow]A recent local change is waiting to upload.[/yellow]")
+
+        self.update_setup_health_panel()
+
+    def update_setup_health_panel(self):
+        setup_health_details = self.query_one("#setup-health-details", Static)
+        setup_health_details.update(
+            get_setup_health_display(
+                load_data(),
+                self.logged_in,
+                self.server_is_online,
+                get_server_token(),
+            )
+        )
 
     def apply_theme(self):
         data = load_data()
@@ -1136,6 +1270,40 @@ class StudyStreakApp(App):
             0.1,
             lambda: setattr(self, "loading_settings", False),
         )
+
+    def show_settings_panel(self, active_panel_id):
+        panel_ids = [
+            "#weekly-goal-panel",
+            "#setup-health-panel",
+            "#sync-panel",
+            "#appearance-panel",
+            "#sounds-panel",
+            "#subjects-panel",
+            "#focus-import-panel",
+        ]
+
+        for panel_id in panel_ids:
+            self.query_one(panel_id).display = panel_id == active_panel_id
+
+        if active_panel_id == "#setup-health-panel":
+            self.update_setup_health_panel()
+
+        if active_panel_id == "#sync-panel":
+            self.update_sync_status()
+
+        if active_panel_id == "#appearance-panel":
+            self.update_appearance_settings_panel()
+
+        if active_panel_id == "#sounds-panel":
+            self.update_sound_settings_panel()
+
+        if active_panel_id == "#subjects-panel":
+            self.query_one("#subject-add-panel").display = True
+            self.query_one("#subject-edit-panel").display = False
+            self.query_one("#subject-delete-panel").display = False
+
+        if active_panel_id == "#focus-import-panel":
+            self.update_dashboard()
         
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         if self.loading_settings:
@@ -1662,11 +1830,23 @@ class StudyStreakApp(App):
     def show_server_status(self, server_is_online):
         #update server connection label from the main thread
         server_status_label = self.query_one("#server-status-label", Static)
+        self.server_is_online = server_is_online
 
         if server_is_online:
             server_status_label.update("[green]Server: Connected[/green]")
         else:
             server_status_label.update("[red]Server: Offline[/red]")
+
+        if self.logged_in:
+            self.update_setup_health_panel()
+            self.query_one("#setup-checklist", Static).update(
+                get_setup_checklist(
+                    load_data(),
+                    self.logged_in,
+                    self.server_is_online,
+                    get_server_token(),
+                )
+            )
 
     def sync_profile_from_server(self, username, password, token):
         #download encrypted profile from server
@@ -2051,6 +2231,20 @@ class StudyStreakApp(App):
             password_input.value = ""
             self.show_temp_message("#login-message", "[green]Account created and logged in.[/green]")
             self.show_main_app()
+            return
+
+        settings_panel_by_button = {
+            "settings-weekly-button": "#weekly-goal-panel",
+            "settings-health-button": "#setup-health-panel",
+            "settings-sync-button": "#sync-panel",
+            "settings-appearance-button": "#appearance-panel",
+            "settings-sounds-button": "#sounds-panel",
+            "settings-subjects-button": "#subjects-panel",
+            "settings-focus-import-button": "#focus-import-panel",
+        }
+
+        if event.button.id in settings_panel_by_button:
+            self.show_settings_panel(settings_panel_by_button[event.button.id])
             return
 
         if event.button.id == "settings-weekly-button":

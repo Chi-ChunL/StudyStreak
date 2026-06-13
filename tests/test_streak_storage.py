@@ -1,11 +1,15 @@
 import importlib
+import os
 import sys
+import tempfile
 import types
 import unittest
 from datetime import datetime, timedelta
 
 
-def load_storage_with_stubs():
+def load_storage_with_stubs(data_dir):
+    os.environ["STUDYSTREAK_DATA_DIR"] = data_dir
+
     session_stub = types.ModuleType("studystreak.session")
     session_stub.is_logged_in = lambda: False
     session_stub.get_session_data = lambda: {}
@@ -28,13 +32,17 @@ def load_storage_with_stubs():
     sys.modules["studystreak.profile_sync"] = profile_sync_stub
     sys.modules["studystreak.api_client"] = api_client_stub
 
+    sys.modules.pop("studystreak.paths", None)
     sys.modules.pop("studystreak.storage", None)
     return importlib.import_module("studystreak.storage")
 
 
 class StreakStorageTests(unittest.TestCase):
     def setUp(self):
-        self.storage = load_storage_with_stubs()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.addCleanup(os.environ.pop, "STUDYSTREAK_DATA_DIR", None)
+        self.storage = load_storage_with_stubs(self.temp_dir.name)
 
     def make_chrome_session(self, completed_at):
         return {

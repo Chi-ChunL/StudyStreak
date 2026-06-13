@@ -169,6 +169,7 @@ TabPane {
 
 /* #------------------dashboard------------------- */
 
+#setup-checklist,
 #dashboard {
     text-align: center;
     color: #cfcfcf;
@@ -456,6 +457,7 @@ TabPane {
 }
 
 #settings-weekly-button,
+#settings-health-button,
 #settings-sync-button,
 #settings-appearance-button,
 #settings-sounds-button,
@@ -471,6 +473,7 @@ TabPane {
 }
 
 #settings-weekly-button:hover,
+#settings-health-button:hover,
 #settings-sync-button:hover,
 #settings-appearance-button:hover,
 #settings-sounds-button:hover,
@@ -481,6 +484,7 @@ TabPane {
 }
 
 #weekly-goal-panel,
+#setup-health-panel,
 #sync-panel,
 #appearance-panel,
 #sounds-panel,
@@ -561,6 +565,20 @@ TabPane {
     text-align: center;
     color: #cfcfcf;
     text-style: bold;
+    margin-bottom: 1;
+}
+
+#setup-health-title {
+    text-align: center;
+    color: #cfcfcf;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#setup-health-details {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
     margin-bottom: 1;
 }
 
@@ -1057,6 +1075,7 @@ Button:hover,
 #leaderboard-week-button,
 #leaderboard-all-button,
 #settings-weekly-button,
+#settings-health-button,
 #settings-sync-button,
 #settings-appearance-button,
 #settings-sounds-button,
@@ -1074,6 +1093,7 @@ Button:hover,
 #leaderboard-week-button:hover,
 #leaderboard-all-button:hover,
 #settings-weekly-button:hover,
+#settings-health-button:hover,
 #settings-sync-button:hover,
 #settings-appearance-button:hover,
 #settings-sounds-button:hover,
@@ -1086,6 +1106,7 @@ Button:hover,
     border: none;
 }
 
+#setup-checklist,
 #dashboard,
 #recent-sessions,
 #subject-stats,
@@ -1093,6 +1114,7 @@ Button:hover,
 #achievements,
 #today-timetable,
 #timetable-grid,
+#setup-health-details,
 #sync-details,
 #timetable-form-panel {
     background: #111111;
@@ -1102,6 +1124,7 @@ Button:hover,
 
 #settings-title,
 #goal-panel-title,
+#setup-health-title,
 #sync-panel-title,
 #appearance-panel-title,
 #sound-panel-title,
@@ -1372,6 +1395,7 @@ Screen.light-mode {
 .light-mode #leaderboard-week-button,
 .light-mode #leaderboard-all-button,
 .light-mode #settings-weekly-button,
+.light-mode #settings-health-button,
 .light-mode #settings-sync-button,
 .light-mode #settings-appearance-button,
 .light-mode #settings-sounds-button,
@@ -1390,6 +1414,7 @@ Screen.light-mode {
 .light-mode #leaderboard-week-button:hover,
 .light-mode #leaderboard-all-button:hover,
 .light-mode #settings-weekly-button:hover,
+.light-mode #settings-health-button:hover,
 .light-mode #settings-sync-button:hover,
 .light-mode #settings-appearance-button:hover,
 .light-mode #settings-sounds-button:hover,
@@ -1402,6 +1427,7 @@ Screen.light-mode {
     border: none;
 }
 
+.light-mode #setup-checklist,
 .light-mode #dashboard,
 .light-mode #recent-sessions,
 .light-mode #subject-stats,
@@ -1409,6 +1435,7 @@ Screen.light-mode {
 .light-mode #achievements,
 .light-mode #today-timetable,
 .light-mode #timetable-grid,
+.light-mode #setup-health-details,
 .light-mode #sync-details,
 .light-mode #timetable-form-panel {
     background: #fbf1dd;
@@ -1418,6 +1445,7 @@ Screen.light-mode {
 
 .light-mode #settings-title,
 .light-mode #goal-panel-title,
+.light-mode #setup-health-title,
 .light-mode #sync-panel-title,
 .light-mode #appearance-panel-title,
 .light-mode #sound-panel-title,

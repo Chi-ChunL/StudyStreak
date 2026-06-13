@@ -1,10 +1,10 @@
 import json
 import re
-from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import InvalidToken
 
+from studystreak.paths import get_app_data_file, migrate_legacy_file
 from studystreak.security import (
     hash_password,
     verify_password,
@@ -14,7 +14,8 @@ from studystreak.security import (
 )
 
 
-ACCOUNTS_FILE = Path("accounts.json")
+ACCOUNTS_FILE = get_app_data_file("accounts.json")
+migrate_legacy_file("accounts.json", ACCOUNTS_FILE)
 
 def get_empty_private_data() -> dict[str, Any]:
     return{
