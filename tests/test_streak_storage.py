@@ -141,6 +141,30 @@ class StreakStorageTests(unittest.TestCase):
 
         self.assertEqual(data["streak_days"], [self.storage.get_today_text()])
 
+    def test_server_subject_websites_fill_local_subject_settings(self):
+        data = self.storage.get_default_data()
+        data["subjects"] = ["maths"]
+        data["subject_websites"] = {"maths": []}
+
+        updates = self.storage.merge_subject_websites(
+            data,
+            {
+                "maths": ["pearsonactivelearn.com", "quizlet.com"],
+                "physics": ["senecalearning.com"],
+            },
+        )
+
+        self.assertEqual(updates, 2)
+        self.assertIn("physics", data["subjects"])
+        self.assertEqual(
+            data["subject_websites"]["maths"],
+            ["https://pearsonactivelearn.com", "https://quizlet.com"],
+        )
+        self.assertEqual(
+            data["subject_websites"]["physics"],
+            ["https://senecalearning.com"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

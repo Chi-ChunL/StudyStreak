@@ -155,6 +155,23 @@ def clean_subject_websites(subject_websites):
 
     return cleaned
 
+def merge_subject_websites(data, server_subject_websites):
+    data = repair_data(data)
+    server_subject_websites = clean_subject_websites(server_subject_websites)
+    changed_subjects = 0
+
+    for subject, websites in server_subject_websites.items():
+        if subject not in data["subjects"]:
+            data["subjects"].append(subject)
+
+        if data["subject_websites"].get(subject, []) != websites:
+            data["subject_websites"][subject] = websites
+            changed_subjects += 1
+
+    data["subjects"].sort()
+    data["subject_websites"] = clean_subject_websites(data["subject_websites"])
+    return changed_subjects
+
 def protect_streak_today(data):
     data = repair_data(data)
     today_text = get_today_text()

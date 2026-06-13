@@ -18,6 +18,12 @@
     ];
 
     let timerId = null;
+    let keepOverlayAfterStop = false;
+    let removeAfterStopTimerId = null;
+    let stopStatus = {
+        text: "",
+        type: "pending"
+    };
     let currentState = {
         focusActive: false,
         focusStartedAt: null,
@@ -125,6 +131,29 @@
                 white-space: nowrap;
             }
 
+            .status {
+                display: none;
+                margin-top: 7px;
+                font-size: 12px;
+                font-weight: 800;
+                line-height: 1.25;
+            }
+
+            .status.success {
+                display: block;
+                color: #0b7a39;
+            }
+
+            .status.failure {
+                display: block;
+                color: #8a1f1f;
+            }
+
+            .status.pending {
+                display: block;
+                color: #174a7c;
+            }
+
             .stop-button {
                 width: 100%;
                 margin-top: 8px;
@@ -156,6 +185,7 @@
             <div class="label">StudyStreak</div>
             <div class="time">0:00</div>
             <div class="subject">Focus running</div>
+            <div class="status" aria-live="polite"></div>
             <button class="stop-button" type="button">Stop Focus</button>
         `;
 
@@ -165,22 +195,107 @@
         return root;
     }
 
+    function setOverlayStatus(text, type = "pending") {
+        stopStatus = { text, type };
+
+        const root = document.getElementById(OVERLAY_ID);
+
+        if (!root?.shadowRoot) {
+            return;
+        }
+
+        const status = root.shadowRoot.querySelector(".status");
+        status.textContent = text;
+        status.className = text ? `status ${type}` : "status";
+    }
+
+    function getStopResultMessage(summary) {
+        if (!summary) {
+            return {
+                text: "Upload unsuccessful: no response.",
+                type: "failure",
+                buttonText: "Upload unsuccessful"
+            };
+        }
+
+        if (!summary.completedAt) {
+            return {
+                text: summary.serverUpload?.error || "Focus stopped. No new upload.",
+                type: "success",
+                buttonText: "Focus stopped"
+            };
+        }
+
+        if (summary.serverUpload?.ok && summary.qualityUpload?.ok) {
+            return {
+                text: `Upload successful: ${summary.serverUpload.minutes} min synced.`,
+                type: "success",
+                buttonText: "Upload successful"
+            };
+        }
+
+        if (summary.serverUpload?.ok) {
+            return {
+                text: `Leaderboard uploaded ${summary.serverUpload.minutes} min. Quality sync failed.`,
+                type: "failure",
+                buttonText: "Upload partly failed"
+            };
+        }
+
+        return {
+            text: `Upload unsuccessful: ${summary.serverUpload?.error || "Unknown error."}`,
+            type: "failure",
+            buttonText: "Upload unsuccessful"
+        };
+    }
+
+    function renderStoppedOverlay() {
+        const root = getOverlayRoot();
+        const shadowTimer = root.shadowRoot;
+
+        if (!shadowTimer) {
+            return;
+        }
+
+        shadowTimer.querySelector(".label").textContent = "StudyStreak";
+        shadowTimer.querySelector(".time").textContent = "Stopped";
+        shadowTimer.querySelector(".subject").textContent = "Focus session ended";
+        setOverlayStatus(stopStatus.text || "Stopping...", stopStatus.type || "pending");
+    }
+
     async function stopFocusFromOverlay(event) {
         event.preventDefault();
         event.stopPropagation();
 
         const button = event.currentTarget;
+        keepOverlayAfterStop = true;
         button.disabled = true;
         button.textContent = "Stopping...";
+        setOverlayStatus("Stopping focus and uploading...", "pending");
 
         try {
-            await chrome.runtime.sendMessage({ type: "stopFocus" });
+            const summary = await chrome.runtime.sendMessage({ type: "stopFocus" });
+            const result = getStopResultMessage(summary);
+            button.textContent = result.buttonText;
+            setOverlayStatus(result.text, result.type);
             await refreshState();
+
+            if (removeAfterStopTimerId !== null) {
+                clearTimeout(removeAfterStopTimerId);
+            }
+
+            removeAfterStopTimerId = setTimeout(() => {
+                keepOverlayAfterStop = false;
+                removeAfterStopTimerId = null;
+                removeOverlay();
+            }, 5000);
         } catch {
             button.disabled = false;
             button.textContent = "Stop failed";
+            setOverlayStatus("Upload unsuccessful: stop failed.", "failure");
             setTimeout(() => {
                 button.textContent = "Stop Focus";
+                setOverlayStatus("", "pending");
             }, 1800);
         }
     }
@@ -196,10 +311,20 @@
             clearInterval(timerId);
             timerId = null;
         }
+
+        stopStatus = {
+            text: "",
+            type: "pending"
+        };
     }
 
     function updateOverlay() {
         if (!currentState.focusActive || !currentState.focusStartedAt) {
+            if (keepOverlayAfterStop) {
+                renderStoppedOverlay();
+                return;
+            }
+
             removeOverlay();
             return;
         }
@@ -227,6 +352,11 @@
         shadowTimer.querySelector(".label").textContent = label;
         shadowTimer.querySelector(".time").textContent = timeText;
         shadowTimer.querySelector(".subject").textContent = subjectText;
+        setOverlayStatus("", "pending");
+
+        const stopButton = shadowTimer.querySelector(".stop-button");
+        stopButton.disabled = false;
+        stopButton.textContent = "Stop Focus";
     }
 
     function renderOverlay() {

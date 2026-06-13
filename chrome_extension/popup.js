@@ -35,6 +35,7 @@ let currentSettings = {
     serverToken: "",
     focusActive: false,
     pomodoroEnabled: false,
+    selectedFocusSubject: "",
     syncedSubjects: [],
     syncedSubjectWebsites: {}
 };
@@ -139,9 +140,7 @@ function getSubjectWebsites(subject, settings = currentSettings) {
 function renderFocusWebsitesForSubject(subject) {
     const websites = getSubjectWebsites(subject);
 
-    allowedDomains.value = websites.length > 0
-        ? websites.join("\n")
-        : currentSettings.allowedDomains.join("\n");
+    allowedDomains.value = websites.join("\n");
 }
 
 function renderTodaySessions(settings = currentSettings) {
@@ -218,6 +217,9 @@ function hasSyncedSubjects(settings = currentSettings) {
 
 function renderSubjectOptions(subjects, selectedSubject = "") {
     const safeSubjects = Array.isArray(subjects) ? subjects : [];
+    const cleanSelectedSubject = String(
+        selectedSubject || currentSettings.selectedFocusSubject || currentSettings.focusSubject || ""
+    ).trim().toLowerCase();
     focusSubject.innerHTML = "";
 
     if (safeSubjects.length === 0) {
@@ -225,6 +227,7 @@ function renderSubjectOptions(subjects, selectedSubject = "") {
         emptyOption.value = "";
         emptyOption.textContent = "No synced subjects";
         focusSubject.append(emptyOption);
+        allowedDomains.value = "";
         focusSubject.disabled = true;
         return;
     }
@@ -241,8 +244,8 @@ function renderSubjectOptions(subjects, selectedSubject = "") {
         focusSubject.append(option);
     });
 
-    focusSubject.value = safeSubjects.includes(selectedSubject)
-        ? selectedSubject
+    focusSubject.value = safeSubjects.includes(cleanSelectedSubject)
+        ? cleanSelectedSubject
         : "";
     
     renderFocusWebsitesForSubject(focusSubject.value);
@@ -334,7 +337,7 @@ function setAccountGate(settings) {
         }
     });
 
-    saveButton.disabled = !loggedIn;
+    saveButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     testButton.disabled = !loggedIn;
     startFocusButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     stopFocusButton.disabled = !loggedIn || !currentSettings.focusActive;
@@ -383,7 +386,6 @@ async function loadSettings() {
         }
 
         remindersEnabled.checked = state.settings.remindersEnabled;
-        allowedDomains.value = state.settings.allowedDomains.join("\n");
         strictFocusEnabled.checked = Boolean(state.settings.strictFocusEnabled);
         pomodoroEnabledInput.checked = Boolean(state.settings.pomodoroEnabled);
 
@@ -393,7 +395,10 @@ async function loadSettings() {
         };
 
         renderTodaySessions(currentSettings);
-        renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
+        renderSubjectOptions(
+            currentSettings.syncedSubjects,
+            currentSettings.selectedFocusSubject || currentSettings.focusSubject
+        );
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
@@ -428,17 +433,19 @@ async function loginToServer() {
 
     loginPassword.value = "";
     loginUsername.value = result.serverUsername;
+    const state = await chrome.runtime.sendMessage({
+        type: "getCompanionState"
+    });
     currentSettings = {
         ...currentSettings,
-        serverUsername: result.serverUsername,
-        serverToken: "saved",
-        syncedSubjects: result.subjects || [],
-        syncedSubjectWebsites: result.subjectWebsites || {},
-        syncedTimetable: result.timetable || []
+        ...(state?.settings || {})
     };
 
     renderTodaySessions(currentSettings);
-    renderSubjectOptions(currentSettings.syncedSubjects, "");
+    renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.selectedFocusSubject);
+    renderFocusSummary(state?.summary || EMPTY_SUMMARY);
+    renderCompletedSummary(currentSettings.lastCompletedFocusSession);
+    renderFocusHistory(currentSettings.focusHistory);
     renderAccount(currentSettings);
     statusText.textContent = currentSettings.syncedSubjects.length > 0
         ? "Logged in."
@@ -456,11 +463,17 @@ async function logoutFromServer() {
         syncedSubjects: [],
         syncedSubjectWebsites: {},
         syncedTimetable: [],
-        focusSubject: ""
+        focusSubject: "",
+        selectedFocusSubject: "",
+        lastCompletedFocusSession: null,
+        focusHistory: []
     };
 
+    allowedDomains.value = "";
     renderTodaySessions(currentSettings);
     renderSubjectOptions([], "");
+    renderCompletedSummary(null);
+    renderFocusHistory([]);
     renderAccount(currentSettings);
     statusText.textContent = "Logged out.";
     showPopupTab("account");
@@ -484,11 +497,15 @@ async function refreshSubjects() {
         ...currentSettings,
         syncedSubjects: result.subjects || [],
         syncedSubjectWebsites: result.subjectWebsites || {},
-        syncedTimetable: result.timetable || []
+        syncedTimetable: result.timetable || [],
+        selectedFocusSubject: result.selectedFocusSubject || ""
     };
 
     renderTodaySessions(currentSettings);
-    renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.focusSubject);
+    renderSubjectOptions(
+        currentSettings.syncedSubjects,
+        currentSettings.selectedFocusSubject || currentSettings.focusSubject
+    );
     setAccountGate(currentSettings);
     const timetableCount = Array.isArray(result.timetable) ? result.timetable.length : 0;
     statusText.textContent = currentSettings.syncedSubjects.length > 0
@@ -506,8 +523,7 @@ async function saveSettings(showMessage = true) {
         settings: {
             remindersEnabled: remindersEnabled.checked,
             strictFocusEnabled: strictFocusEnabled.checked,
-            pomodoroEnabled: pomodoroEnabledInput.checked,
-            allowedDomains: parseDomains(allowedDomains.value)
+            pomodoroEnabled: pomodoroEnabledInput.checked
         }
     });
 
@@ -526,14 +542,66 @@ async function saveReminderToggle() {
         settings: {
             remindersEnabled: remindersEnabled.checked,
             strictFocusEnabled: strictFocusEnabled.checked,
-            pomodoroEnabled: pomodoroEnabledInput.checked,
-            allowedDomains: parseDomains(allowedDomains.value)
+            pomodoroEnabled: pomodoroEnabledInput.checked
         }
     });
 
     statusText.textContent = remindersEnabled.checked
         ? "Timetable notifications enabled."
         : "Timetable notifications disabled.";
+}
+
+async function rememberSelectedSubject(subject) {
+    const cleanSubject = String(subject || "").trim().toLowerCase();
+    currentSettings.selectedFocusSubject = cleanSubject;
+
+    await chrome.runtime.sendMessage({
+        type: "saveSettings",
+        settings: {
+            selectedFocusSubject: cleanSubject
+        }
+    });
+}
+
+async function saveFocusWebsites(showMessage = true) {
+    if (!(await requireLogin())) {
+        return false;
+    }
+
+    const subject = focusSubject.value.trim().toLowerCase();
+
+    if (!subject) {
+        statusText.textContent = "Choose a synced subject first.";
+        return false;
+    }
+
+    const websites = parseDomains(allowedDomains.value);
+
+    const result = await chrome.runtime.sendMessage({
+        type: "saveSubjectWebsites",
+        subject,
+        websites
+    });
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Could not save focus websites.";
+        return false;
+    }
+
+    currentSettings = {
+        ...currentSettings,
+        syncedSubjectWebsites: result.subjectWebsites || {},
+        selectedFocusSubject: result.selectedFocusSubject || subject
+    };
+
+    renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.selectedFocusSubject);
+
+    if (showMessage) {
+        const count = Array.isArray(result.websites) ? result.websites.length : 0;
+        statusText.textContent = `Saved ${count} website(s) for ${subject}.`;
+    }
+
+    return true;
 }
 
 async function testNotification() {
@@ -557,6 +625,15 @@ async function startFocus() {
 
     if (!subject) {
         statusText.textContent = "Choose a synced subject first.";
+        return;
+    }
+
+    if (parseDomains(allowedDomains.value).length === 0) {
+        statusText.textContent = "Add at least one focus website for this subject.";
+        return;
+    }
+
+    if (!(await saveFocusWebsites(false))) {
         return;
     }
 
@@ -737,12 +814,13 @@ tabButtons.forEach((button) => {
 });
 
 remindersEnabled.addEventListener("change", saveReminderToggle);
-focusSubject.addEventListener("change", () => {
+focusSubject.addEventListener("change", async () => {
     renderFocusWebsitesForSubject(focusSubject.value);
+    await rememberSelectedSubject(focusSubject.value);
 });
 strictFocusEnabled.addEventListener("change", saveSettings);
 pomodoroEnabledInput.addEventListener("change", saveSettings);
-saveButton.addEventListener("click", saveSettings);
+saveButton.addEventListener("click", saveFocusWebsites);
 testButton.addEventListener("click", testNotification);
 refreshSubjectsButton.addEventListener("click", refreshSubjects);
 startFocusButton.addEventListener("click", startFocus);

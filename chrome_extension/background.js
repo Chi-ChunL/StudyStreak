@@ -4,6 +4,7 @@ const FOCUS_TICK_ALARM = "studystreak-focus-tick";
 const TIMETABLE_ALARM_PREFIX = "studystreak-timetable-";
 const POMODORO_WORK_SECONDS = 50 * 60;
 const POMODORO_BREAK_SECONDS = 10 * 60;
+const IDLE_DETECTION_SECONDS = 8 * 60;
 
 
 const DEFAULT_STATS = {
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS = {
     lastCompletedFocusSession: null,
     focusHistory: [],
     focusSubject: "",
+    selectedFocusSubject: "",
     syncedSubjects: [],
     syncedSubjectWebsites: {},
     syncedTimetable: [],
@@ -77,6 +79,7 @@ async function getSettings() {
         serverUsername: typeof saved.serverUsername === "string" ? saved.serverUsername : "",
         serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: "",
         focusSubject: typeof saved.focusSubject === "string" ? saved.focusSubject: "",
+        selectedFocusSubject: typeof saved.selectedFocusSubject === "string" ? saved.selectedFocusSubject : "",
         strictFocusEnabled: Boolean(saved.strictFocusEnabled),
         pomodoroEnabled: Boolean(saved.pomodoroEnabled),
         pomodoroPhase: saved.pomodoroPhase === "break" ? "break" : "work",
@@ -195,6 +198,27 @@ async function fetchSubjectWebsitesFromServer(token) {
     return cleanSubjectWebsiteMap(data.subject_websites);
 }
 
+async function uploadSubjectWebsitesToServer(token, subjectWebsites) {
+    const response = await fetch(`${API_BASE_URL}/subject-websites`, {
+        method: "PUT",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            subject_websites: cleanSubjectWebsiteMap(subjectWebsites)
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return data;
+}
+
 async function fetchTimetableFromServer(token) {
     const response = await fetch(`${API_BASE_URL}/timetable`, {
         headers: {
@@ -211,6 +235,14 @@ async function fetchTimetableFromServer(token) {
     return cleanTimetableList(data.timetable);
 }
 
+function getSelectedSubjectForList(subjects, selectedSubject) {
+    const cleanSelectedSubject = String(selectedSubject || "").trim().toLowerCase();
+
+    return Array.isArray(subjects) && subjects.includes(cleanSelectedSubject)
+        ? cleanSelectedSubject
+        : "";
+}
+
 async function refreshSubjectsFromServer() {
     const settings = await getSettings();
 
@@ -225,11 +257,16 @@ async function refreshSubjectsFromServer() {
     const subjects = await fetchSubjectsFromServer(settings.serverToken);
     const subjectWebsites = await fetchSubjectWebsitesFromServer(settings.serverToken);
     const timetable = await fetchTimetableFromServer(settings.serverToken);
+    const selectedFocusSubject = getSelectedSubjectForList(
+        subjects,
+        settings.selectedFocusSubject || settings.focusSubject
+    );
 
     await chrome.storage.local.set({
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
-        syncedTimetable: timetable
+        syncedTimetable: timetable,
+        selectedFocusSubject
     });
     await scheduleTimetableReminders(timetable);
 
@@ -237,7 +274,59 @@ async function refreshSubjectsFromServer() {
         ok: true,
         subjects,
         subjectWebsites,
-        timetable
+        timetable,
+        selectedFocusSubject
+    };
+}
+
+async function saveSubjectWebsitesForSubject(subject, websites) {
+    const settings = await getSettings();
+
+    if (!settings.serverToken) {
+        return { ok: false, error: "Log in first." };
+    }
+
+    const cleanSubject = String(subject || "").trim().toLowerCase();
+    const subjects = cleanSubjectList(settings.syncedSubjects);
+
+    if (!cleanSubject) {
+        return { ok: false, error: "Choose a synced subject first." };
+    }
+
+    if (!subjects.includes(cleanSubject)) {
+        return { ok: false, error: "That subject is not synced to this account." };
+    }
+
+    const cleanedEntry = cleanSubjectWebsiteMap({
+        [cleanSubject]: Array.isArray(websites) ? websites : []
+    });
+    const cleanedWebsites = cleanedEntry[cleanSubject] || [];
+    let latestSubjectWebsites = settings.syncedSubjectWebsites || {};
+
+    try {
+        latestSubjectWebsites = await fetchSubjectWebsitesFromServer(settings.serverToken);
+    } catch {
+        latestSubjectWebsites = settings.syncedSubjectWebsites || {};
+    }
+
+    const subjectWebsites = cleanSubjectWebsiteMap({
+        ...latestSubjectWebsites,
+        [cleanSubject]: cleanedWebsites
+    });
+
+    await uploadSubjectWebsitesToServer(settings.serverToken, subjectWebsites);
+
+    await chrome.storage.local.set({
+        syncedSubjectWebsites: subjectWebsites,
+        selectedFocusSubject: cleanSubject
+    });
+
+    return {
+        ok: true,
+        subject: cleanSubject,
+        websites: cleanedWebsites,
+        subjectWebsites,
+        selectedFocusSubject: cleanSubject
     };
 }
 
@@ -380,6 +469,8 @@ async function uploadAndStoreCompletedSummary(completedSummary, settings) {
 
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
+    const previousSettings = await getSettings();
+    const sameAccount = previousSettings.serverUsername === cleanUsername;
 
     const response = await fetch(`${API_BASE_URL}/login`, {
         method: "POST",
@@ -415,16 +506,58 @@ async function loginToServer(username, password) {
         timetable = [];
     }
 
+    const selectedFocusSubject = sameAccount
+        ? getSelectedSubjectForList(
+            subjects,
+            previousSettings.selectedFocusSubject || previousSettings.focusSubject
+        )
+        : "";
+
+    if (!sameAccount) {
+        await chrome.alarms.clear(FOCUS_TICK_ALARM);
+        await clearTimetableReminders();
+    }
+
     await chrome.storage.local.set({
         serverUsername: cleanUsername,
         serverToken: data.access_token,
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
-        syncedTimetable: timetable
+        syncedTimetable: timetable,
+        selectedFocusSubject,
+        focusActive: sameAccount ? previousSettings.focusActive : false,
+        focusSubject: sameAccount && previousSettings.focusActive
+            ? previousSettings.focusSubject
+            : "",
+        focusLastCheckedAt: sameAccount ? previousSettings.focusLastCheckedAt : null,
+        focusStats: sameAccount ? previousSettings.focusStats : { ...DEFAULT_STATS },
+        lastCompletedFocusSession: sameAccount
+            ? previousSettings.lastCompletedFocusSession
+            : null,
+        focusHistory: sameAccount ? previousSettings.focusHistory : [],
+        allowedDomains: sameAccount
+            ? previousSettings.allowedDomains
+            : DEFAULT_SETTINGS.allowedDomains,
+        pomodoroEnabled: sameAccount ? previousSettings.pomodoroEnabled : false,
+        pomodoroPhase: sameAccount ? previousSettings.pomodoroPhase : "work",
+        pomodoroPhaseStartedAt: sameAccount ? previousSettings.pomodoroPhaseStartedAt : null,
+        pomodoroPhaseDurationSeconds: sameAccount
+            ? previousSettings.pomodoroPhaseDurationSeconds
+            : POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: sameAccount
+            ? previousSettings.pomodoroWorkBlocksCompleted
+            : 0
     });
     await scheduleTimetableReminders(timetable);
 
-    return { ok: true, serverUsername: cleanUsername, subjects, subjectWebsites, timetable };
+    return {
+        ok: true,
+        serverUsername: cleanUsername,
+        subjects,
+        subjectWebsites,
+        timetable,
+        selectedFocusSubject
+    };
 }
 
 async function logoutFromServer() {
@@ -437,6 +570,11 @@ async function logoutFromServer() {
         focusActive: false,
         focusLastCheckedAt: null,
         focusSubject: "",
+        selectedFocusSubject: "",
+        allowedDomains: DEFAULT_SETTINGS.allowedDomains,
+        focusStats: { ...DEFAULT_STATS },
+        lastCompletedFocusSession: null,
+        focusHistory: [],
         pomodoroEnabled: false,
         pomodoroPhase: "work",
         pomodoroPhaseStartedAt: null,
@@ -537,7 +675,7 @@ function getAllowedDomainsForFocus(settings) {
         ? subjectWebsites[subject]
         : [];
 
-    if (subjectDomains.length > 0) {
+    if (subject) {
         return subjectDomains;
     }
 
@@ -554,7 +692,7 @@ async function getActiveTabDomain() {
 }
 
 async function getCurrentFocusCategory(settings) {
-    const idleState = await chrome.idle.queryState(60);
+    const idleState = await chrome.idle.queryState(IDLE_DETECTION_SECONDS);
 
     if (idleState !== "active") {
         return { category: "idle", domain: "idle" };
@@ -713,6 +851,7 @@ async function startFocus(subject, pomodoroEnabled = false) {
     await chrome.storage.local.set({
         focusActive: true,
         focusSubject: cleanSubject,
+        selectedFocusSubject: cleanSubject,
         focusStartedAt: now,
         focusLastCheckedAt: now,
         focusStats: stats,
@@ -893,6 +1032,7 @@ async function stopFocus() {
     await chrome.storage.local.set({
         focusActive: false,
         focusLastCheckedAt: null,
+        selectedFocusSubject: settings.focusSubject || settings.selectedFocusSubject || "",
         focusSubject: "",
         pomodoroEnabled: false,
         pomodoroPhase: "work",
@@ -1082,6 +1222,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return await refreshSubjectsFromServer();
             } catch(error) {
                 return { ok: false, error: error.message || "Could not refresh subjects.", subjects: [] };
+            }
+        }
+
+        if (message.type === "saveSubjectWebsites") {
+            try {
+                return await saveSubjectWebsitesForSubject(
+                    message.subject || "",
+                    message.websites || []
+                );
+            } catch(error) {
+                return { ok: false, error: error.message || "Could not save focus websites." };
             }
         }
 

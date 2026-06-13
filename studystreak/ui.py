@@ -22,6 +22,7 @@ from studystreak.storage import (
     clean_website_list,
     load_data,
     merge_focus_quality_sessions,
+    merge_subject_websites,
     protect_streak_today,
     repair_data,
     save_data,
@@ -44,6 +45,7 @@ from studystreak.api_client import (
     check_server_status,
     get_profile_data,
     get_focus_quality_sessions,
+    get_subject_websites,
 )
 from studystreak.profile_sync import decrypt_profile_data
 from studystreak.notification import (
@@ -1308,6 +1310,13 @@ class StudyStreakApp(App):
             self.update_sound_settings_panel()
 
         if active_panel_id == "#subjects-panel":
+            try:
+                subject_sync = self.sync_subject_websites_from_server()
+                if subject_sync["updates"] > 0:
+                    self.update_dashboard()
+            except ValueError:
+                pass
+
             self.query_one("#subject-add-panel").display = True
             self.query_one("#subject-edit-panel").display = False
             self.query_one("#subject-delete-panel").display = False
@@ -1906,6 +1915,7 @@ class StudyStreakApp(App):
                 private_data,
                 cloud_data,
             )
+            self.sync_subject_websites_from_server(server_token)
             self.sync_focus_quality_from_server(server_token)
 
         except ValueError:
@@ -2009,6 +2019,26 @@ class StudyStreakApp(App):
         return {
             "updates": added_count,
             "streak_protected": streak_protected,
+        }
+
+    def sync_subject_websites_from_server(self, token=None):
+        #download authenticated subject website lists saved by the extension
+        token = token or get_server_token()
+
+        if token is None:
+            return {
+                "updates": 0,
+            }
+
+        server_subject_websites = get_subject_websites(token)
+        data = load_data()
+        updated_count = merge_subject_websites(data, server_subject_websites)
+
+        if updated_count > 0:
+            save_data(data)
+
+        return {
+            "updates": updated_count,
         }
 
     def use_newest_profile_after_login(
@@ -2232,6 +2262,7 @@ class StudyStreakApp(App):
                         private_data,
                         cloud_data,
                     )
+                    self.sync_subject_websites_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
 
                 except ValueError:
@@ -2271,6 +2302,7 @@ class StudyStreakApp(App):
                     cloud_data,
                     prefer_cloud_when_equal=True,
                 )
+                self.sync_subject_websites_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
                 self.show_temp_message(
@@ -2330,6 +2362,7 @@ class StudyStreakApp(App):
                 server_token = login_to_server(username, password)
                 set_server_token(server_token)
                 save_data(private_data)
+                self.sync_subject_websites_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
             except ValueError as signup_error:
@@ -2337,6 +2370,7 @@ class StudyStreakApp(App):
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
                     save_data(private_data)
+                    self.sync_subject_websites_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
                     cloud_message = "[green]Account created and linked to existing cloud login.[/green]"
 
@@ -2468,19 +2502,21 @@ class StudyStreakApp(App):
             return
 
         if event.button.id == "sync-now-button":
-            data = load_data()
-            save_data(data)
             try:
+                subject_sync_result = self.sync_subject_websites_from_server()
+                data = load_data()
+                save_data(data)
                 sync_result = self.sync_focus_quality_from_server()
             except ValueError as error:
                 self.update_sync_status()
                 self.show_temp_message("#sync-message", f"[red]{error}[/red]")
                 return
 
+            subject_website_updates = subject_sync_result["updates"]
             added_count = sync_result["updates"]
             streak_protected = sync_result["streak_protected"]
             self.update_sync_status()
-            if added_count > 0:
+            if added_count > 0 or subject_website_updates > 0:
                 self.update_dashboard()
                 achievement_unlocked = self.unlock_earned_achievements()
                 if streak_protected:
@@ -2495,9 +2531,32 @@ class StudyStreakApp(App):
                         self.show_streak_effect(streak_count)
                     return
 
+                if added_count > 0 and subject_website_updates > 0:
+                    self.show_temp_message(
+                        "#sync-message",
+                        (
+                            "[green]Sync started. Added "
+                            f"{added_count} Chrome focus update(s) and updated "
+                            f"{subject_website_updates} subject website set(s).[/green]"
+                        ),
+                    )
+                    self.set_timer(2, self.update_sync_status)
+                    return
+
+                if subject_website_updates > 0:
+                    self.show_temp_message(
+                        "#sync-message",
+                        (
+                            "[green]Sync started. Updated "
+                            f"{subject_website_updates} subject website set(s).[/green]"
+                        ),
+                    )
+                    self.set_timer(2, self.update_sync_status)
+                    return
+
                 self.show_temp_message(
                     "#sync-message",
-                    f"[green]Sync started. Added {added_count} Chrome focus updates.[/green]",
+                    f"[green]Sync started. Added {added_count} Chrome focus update(s).[/green]",
                 )
             else:
                 self.show_temp_message(
