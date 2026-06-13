@@ -8,7 +8,8 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 
-BASE_URL = os.getenv("STUDYSTREAK_API_URL", "http://127.0.0.1:8000")
+DEFAULT_BASE_URL = "https://chichi.hackclub.app"
+BASE_URL = os.getenv("STUDYSTREAK_API_URL", DEFAULT_BASE_URL).rstrip("/")
 
 
 def get_error_detail(response: requests.Response) -> str:
