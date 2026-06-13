@@ -176,7 +176,7 @@ def get_weekly_goal_status(current, goal):
     if current >= goal:
         return "[green]Completed[/green]"
  
-    return "[yellow]Keep going[/yellow]"
+    return "[bold #0b7a39]Keep going[/bold #0b7a39]"
  
  
 def has_studied_today(data):
@@ -492,7 +492,7 @@ def get_focus_quality_summary(data):
 
 
 def format_setup_item(done, name, next_step):
-    status = "[green]Done[/green]" if done else "[yellow]Next[/yellow]"
+    status = "[green]Done[/green]" if done else "[bold #005f87]Next[/bold #005f87]"
     if done:
         return f"{status} - {name}"
 
@@ -1982,7 +1982,7 @@ class StudyStreakApp(App):
 
         username = get_session_username()
 
-        account_label.update(f"[cyan]Logged in as:[/cyan] {username}")
+        account_label.update(f"[bold]Logged in as:[/bold] [bold]{username}[/bold]")
 
         login_container.display = False
         main_container.display = True

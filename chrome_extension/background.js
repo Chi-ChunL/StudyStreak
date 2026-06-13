@@ -409,6 +409,20 @@ function getDomainFromUrl(url) {
     }
 }
 
+function isNewTabPageUrl(url) {
+    if (!url) {
+        return true;
+    }
+
+    return (
+        url === "about:blank" ||
+        url === "chrome://newtab/" ||
+        url === "edge://newtab/" ||
+        url === "brave://newtab/" ||
+        url === "zen://newtab/"
+    );
+}
+
 function isAllowedDomain(domain, allowedDomains) {
     const cleanCurrentDomain = cleanDomain(domain);
 
@@ -864,6 +878,10 @@ async function enforceStrictFocus(settings = null) {
     });
 
     if (!tab?.id || !tab?.url) {
+        return;
+    }
+
+    if (isNewTabPageUrl(tab.url)) {
         return;
     }
 
