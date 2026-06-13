@@ -2,6 +2,8 @@ const DAILY_REMINDER_ALARM = "studystreak-daily-reminder";
 const API_BASE_URL = "https://chichi.hackclub.app";
 const FOCUS_TICK_ALARM = "studystreak-focus-tick";
 const TIMETABLE_ALARM_PREFIX = "studystreak-timetable-";
+const POMODORO_WORK_SECONDS = 50 * 60;
+const POMODORO_BREAK_SECONDS = 10 * 60;
 
 
 const DEFAULT_STATS = {
@@ -29,9 +31,15 @@ const DEFAULT_SETTINGS = {
     serverUsername: "",
     serverToken: "",
     strictFocusEnabled: false,
+    pomodoroEnabled: false,
+    pomodoroPhase: "work",
+    pomodoroPhaseStartedAt: null,
+    pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+    pomodoroWorkBlocksCompleted: 0,
 };
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
+let pomodoroTransitionRunning = false;
 
 async function getSettings() {
     const saved = await chrome.storage.local.get(DEFAULT_SETTINGS);
@@ -70,6 +78,11 @@ async function getSettings() {
         serverToken: typeof saved.serverToken ==="string" ? saved.serverToken: "",
         focusSubject: typeof saved.focusSubject === "string" ? saved.focusSubject: "",
         strictFocusEnabled: Boolean(saved.strictFocusEnabled),
+        pomodoroEnabled: Boolean(saved.pomodoroEnabled),
+        pomodoroPhase: saved.pomodoroPhase === "break" ? "break" : "work",
+        pomodoroPhaseStartedAt: Number(saved.pomodoroPhaseStartedAt) || null,
+        pomodoroPhaseDurationSeconds: Number(saved.pomodoroPhaseDurationSeconds) || POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: Number(saved.pomodoroWorkBlocksCompleted) || 0,
     };
 }
 
@@ -318,6 +331,53 @@ async function uploadFocusQualitySession(summary, token) {
     return { ok: true };
 }
 
+async function uploadAndStoreCompletedSummary(completedSummary, settings) {
+    let serverUpload = { ok: false, error: "Not uploaded."};
+    let qualityUpload = { ok: false, error: "Not synced"};
+
+    try {
+        serverUpload = await uploadCompletedFocusSession(
+            completedSummary,
+            settings.serverToken
+        );
+    } catch (error) {
+        serverUpload = {
+            ok: false,
+            error: error.message || "Upload failed."
+        };
+    }
+
+    try {
+        qualityUpload = await uploadFocusQualitySession(
+            completedSummary,
+            settings.serverToken
+        );
+    } catch(error) {
+        qualityUpload = {
+            ok: false,
+            error: error.message || "Quality sync failed."
+        };
+    }
+
+    const completedSummaryWithUpload = {
+        ...completedSummary,
+        serverUpload,
+        qualityUpload
+    };
+
+    const focusHistory = [
+        completedSummaryWithUpload,
+        ...(settings.focusHistory || [])
+    ].slice(0, 3);
+
+    await chrome.storage.local.set({
+        lastCompletedFocusSession: completedSummaryWithUpload,
+        focusHistory
+    });
+
+    return completedSummaryWithUpload;
+}
+
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
 
@@ -377,6 +437,11 @@ async function logoutFromServer() {
         focusActive: false,
         focusLastCheckedAt: null,
         focusSubject: "",
+        pomodoroEnabled: false,
+        pomodoroPhase: "work",
+        pomodoroPhaseStartedAt: null,
+        pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: 0,
         syncedSubjects: [],
         syncedSubjectWebsites: {},
         syncedTimetable: []
@@ -420,6 +485,36 @@ function isNewTabPageUrl(url) {
         url === "edge://newtab/" ||
         url === "brave://newtab/" ||
         url === "zen://newtab/"
+    );
+}
+
+function canInjectOverlayIntoUrl(url) {
+    return (
+        typeof url === "string" &&
+        (url.startsWith("http://") || url.startsWith("https://"))
+    );
+}
+
+async function injectFocusOverlayIntoOpenTabs() {
+    if (!chrome.scripting?.executeScript) {
+        return;
+    }
+
+    const tabs = await chrome.tabs.query({});
+
+    await Promise.all(
+        tabs
+            .filter((tab) => tab.id && canInjectOverlayIntoUrl(tab.url || ""))
+            .map(async (tab) => {
+                try {
+                    await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ["focus_overlay.js"]
+                    });
+                } catch {
+                    // Some pages reject extension injection; content_scripts handles future page loads.
+                }
+            })
     );
 }
 
@@ -488,6 +583,16 @@ function getTopDistractedDomain(stats) {
     return entries.sort((first, second) => second[1] - first[1])[0][0];
 }
 
+function getPomodoroSecondsLeft(settings) {
+    if (!settings.pomodoroEnabled || !settings.pomodoroPhaseStartedAt) {
+        return null;
+    }
+
+    const elapsedSeconds = Math.floor((Date.now() - settings.pomodoroPhaseStartedAt) / 1000);
+    const durationSeconds = Number(settings.pomodoroPhaseDurationSeconds) || POMODORO_WORK_SECONDS;
+    return Math.max(0, durationSeconds - elapsedSeconds);
+}
+
 function getFocusSummary(settings) {
     const stats = {
         ...DEFAULT_STATS,
@@ -501,12 +606,36 @@ function getFocusSummary(settings) {
     return {
         focusActive: settings.focusActive,
         subject: settings.focusSubject || "unknown",
+        pomodoroEnabled: Boolean(settings.pomodoroEnabled),
+        pomodoroPhase: settings.pomodoroPhase || "work",
+        pomodoroSecondsLeft: getPomodoroSecondsLeft(settings),
+        pomodoroWorkBlocksCompleted: Number(settings.pomodoroWorkBlocksCompleted) || 0,
         score,
         totalSeconds,
         topDistractedDomain,
         ...stats
     };
 } 
+
+async function getFreshFocusStats(settings) {
+    const current = await getCurrentFocusCategory(settings);
+
+    return {
+        ...DEFAULT_STATS,
+        lastCategory: current.category,
+        lastDomain: current.domain
+    };
+}
+
+async function showPomodoroNotification(title, message) {
+    await chrome.notifications.create({
+        type: "basic",
+        iconUrl: ICON_URL,
+        title,
+        message,
+        priority: 1
+    });
+}
 
 async function recordFocusElapsed() {
     const settings = await getSettings();
@@ -516,6 +645,18 @@ async function recordFocusElapsed() {
     }
 
     const now = Date.now();
+
+    if (settings.pomodoroEnabled && settings.pomodoroPhase === "break") {
+        await chrome.storage.local.set({
+            focusLastCheckedAt: now
+        });
+
+        return getFocusSummary({
+            ...settings,
+            focusLastCheckedAt: now
+        });
+    }
+
     const stats = {
         ...DEFAULT_STATS,
         ...settings.focusStats
@@ -552,29 +693,34 @@ async function recordFocusElapsed() {
     });
 }
 
-async function startFocus(subject) {
+async function startFocus(subject, pomodoroEnabled = false) {
     const settings = await getSettings();
     const now = Date.now();
     const cleanSubject = String(subject || "").trim().toLowerCase()
     const focusSettings = {
         ...settings,
         focusActive: true,
-        focusSubject: cleanSubject
+        focusSubject: cleanSubject,
+        pomodoroEnabled: Boolean(pomodoroEnabled),
+        pomodoroPhase: "work",
+        pomodoroPhaseStartedAt: now,
+        pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: 0
     };
-    const current = await getCurrentFocusCategory(focusSettings);
 
-    const stats = {
-        ...DEFAULT_STATS,
-        lastCategory: current.category,
-        lastDomain: current.domain
-    };
+    const stats = await getFreshFocusStats(focusSettings);
 
     await chrome.storage.local.set({
         focusActive: true,
         focusSubject: cleanSubject,
         focusStartedAt: now,
         focusLastCheckedAt: now,
-        focusStats: stats
+        focusStats: stats,
+        pomodoroEnabled: Boolean(pomodoroEnabled),
+        pomodoroPhase: "work",
+        pomodoroPhaseStartedAt: now,
+        pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: 0
     });
 
     await chrome.alarms.clear(FOCUS_TICK_ALARM);
@@ -582,70 +728,177 @@ async function startFocus(subject) {
         periodInMinutes: 1
     });
 
+    await injectFocusOverlayIntoOpenTabs();
     await enforceStrictFocus(focusSettings);
     
     return getFocusSummary({
         ...settings,
         focusActive: true,
         focusSubject: cleanSubject,
-        focusStats: stats
+        focusStats: stats,
+        pomodoroEnabled: Boolean(pomodoroEnabled),
+        pomodoroPhase: "work",
+        pomodoroPhaseStartedAt: now,
+        pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: 0
     });
 }
 
-async function stopFocus() {
-    const completedSummary = {
-        ...(await recordFocusElapsed()),
-        focusActive: false,
-        completedAt: new Date().toISOString()
-    };
+async function handlePomodoroTick(settings = null) {
+    settings = settings || await getSettings();
 
+    if (!settings.focusActive || !settings.pomodoroEnabled) {
+        return settings.focusActive
+            ? await recordFocusElapsed()
+            : getFocusSummary(settings);
+    }
+
+    if (pomodoroTransitionRunning) {
+        return getFocusSummary(settings);
+    }
+
+    const secondsLeft = getPomodoroSecondsLeft(settings);
+
+    if (secondsLeft === null || secondsLeft > 0) {
+        return await recordFocusElapsed();
+    }
+
+    pomodoroTransitionRunning = true;
+
+    try {
+        if (settings.pomodoroPhase === "work") {
+            const completedSummary = {
+                ...(await recordFocusElapsed()),
+                focusActive: false,
+                completedAt: new Date().toISOString(),
+                pomodoroAutoUploaded: true
+            };
+            const latestSettings = await getSettings();
+            const completedSummaryWithUpload = await uploadAndStoreCompletedSummary(
+                completedSummary,
+                latestSettings
+            );
+            const now = Date.now();
+            const nextSettings = {
+                ...latestSettings,
+                focusActive: true,
+                pomodoroEnabled: true,
+                pomodoroPhase: "break",
+                pomodoroPhaseStartedAt: now,
+                pomodoroPhaseDurationSeconds: POMODORO_BREAK_SECONDS,
+                pomodoroWorkBlocksCompleted: (latestSettings.pomodoroWorkBlocksCompleted || 0) + 1,
+                focusStats: { ...DEFAULT_STATS },
+                focusLastCheckedAt: now
+            };
+
+            await chrome.storage.local.set({
+                pomodoroPhase: "break",
+                pomodoroPhaseStartedAt: now,
+                pomodoroPhaseDurationSeconds: POMODORO_BREAK_SECONDS,
+                pomodoroWorkBlocksCompleted: nextSettings.pomodoroWorkBlocksCompleted,
+                focusStats: { ...DEFAULT_STATS },
+                focusLastCheckedAt: now
+            });
+
+            await showPomodoroNotification(
+                "Pomodoro work complete",
+                `Uploaded ${completedSummaryWithUpload.serverUpload?.minutes || 0} min. Break started.`
+            );
+
+            return getFocusSummary(nextSettings);
+        }
+
+        const now = Date.now();
+        const nextSettings = {
+            ...settings,
+            focusActive: true,
+            pomodoroEnabled: true,
+            pomodoroPhase: "work",
+            pomodoroPhaseStartedAt: now,
+            pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+            focusLastCheckedAt: now
+        };
+        const freshStats = await getFreshFocusStats(nextSettings);
+
+        await chrome.storage.local.set({
+            pomodoroPhase: "work",
+            pomodoroPhaseStartedAt: now,
+            pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+            focusStats: freshStats,
+            focusLastCheckedAt: now
+        });
+
+        await showPomodoroNotification(
+            "Pomodoro break finished",
+            "Work started."
+        );
+
+        await enforceStrictFocus({
+            ...nextSettings,
+            focusStats: freshStats
+        });
+
+        return getFocusSummary({
+            ...nextSettings,
+            focusStats: freshStats
+        });
+    } finally {
+        pomodoroTransitionRunning = false;
+    }
+}
+
+async function refreshFocusState() {
     const settings = await getSettings();
 
-    let serverUpload = { ok: false, error: "Not uploaded."};
-    let qualityUpload = { ok: false, error: "Not synced"};
-
-    try {
-        serverUpload = await uploadCompletedFocusSession(
-            completedSummary,
-            settings.serverToken
-        );
-    } catch (error) {
-        serverUpload = {
-            ok: false,
-            error: error.message || "Upload failed."
-        };
+    if (!settings.focusActive) {
+        return getFocusSummary(settings);
     }
 
-    try {
-        qualityUpload = await uploadFocusQualitySession(
-            completedSummary,
-            settings.serverToken
-        );
-    } catch(error) {
-        qualityUpload = {
-            ok: false,
-            error: error.message || "Quality sync failed."
-        };
+    if (settings.pomodoroEnabled) {
+        return await handlePomodoroTick(settings);
     }
 
-    const completedSummaryWithUpload = {
-        ...completedSummary,
-        serverUpload,
-        qualityUpload
+    return await recordFocusElapsed();
+}
+
+async function stopFocus() {
+    const settings = await getSettings();
+    const shouldUploadOnStop = !settings.pomodoroEnabled || settings.pomodoroPhase === "work";
+    let completedSummaryWithUpload = {
+        ...getFocusSummary(settings),
+        focusActive: false,
+        serverUpload: {
+            ok: false,
+            error: "Pomodoro stopped. Completed work blocks were already uploaded."
+        },
+        qualityUpload: {
+            ok: false,
+            error: "Pomodoro stopped."
+        }
     };
 
-    const focusHistory = [
-        completedSummaryWithUpload,
-        ...(settings.focusHistory || [])
-    ].slice(0,3);
+    if (shouldUploadOnStop) {
+        const completedSummary = {
+            ...(await recordFocusElapsed()),
+            focusActive: false,
+            completedAt: new Date().toISOString()
+        };
+        completedSummaryWithUpload = await uploadAndStoreCompletedSummary(
+            completedSummary,
+            await getSettings()
+        );
+    }
 
     await chrome.alarms.clear(FOCUS_TICK_ALARM);
     await chrome.storage.local.set({
         focusActive: false,
         focusLastCheckedAt: null,
-        lastCompletedFocusSession: completedSummaryWithUpload,
-        focusHistory,
         focusSubject: "",
+        pomodoroEnabled: false,
+        pomodoroPhase: "work",
+        pomodoroPhaseStartedAt: null,
+        pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
+        pomodoroWorkBlocksCompleted: 0,
     });
 
     return completedSummaryWithUpload;
@@ -762,24 +1015,24 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 
     if (alarm.name === FOCUS_TICK_ALARM) {
-        recordFocusElapsed();
+        refreshFocusState().catch(() => {});
     }
 });
 
 chrome.tabs.onActivated.addListener(() => {
-    recordFocusElapsed();
+    refreshFocusState().catch(() => {});
     enforceStrictFocus().catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.url || changeInfo.status === "complete") {
-        recordFocusElapsed();
+        refreshFocusState().catch(() => {});
         enforceStrictFocus().catch(() => {});
     }
 });
 
 chrome.idle.onStateChanged.addListener(() => {
-    recordFocusElapsed();
+    refreshFocusState().catch(() => {});
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -796,7 +1049,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === "getCompanionState") {
             const settings = await getSettings();
             const summary = settings.focusActive
-                ? await recordFocusElapsed()
+                ? await refreshFocusState()
                 : getFocusSummary(settings);
 
             return {
@@ -838,7 +1091,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (message.type === "startFocus") {
-            return await startFocus(message.subject || "") ;
+            return await startFocus(
+                message.subject || "",
+                Boolean(message.pomodoroEnabled)
+            ) ;
         }
 
         if (message.type === "stopFocus") {
@@ -848,7 +1104,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === "getFocusStatus") {
             const settings = await getSettings();
             return settings.focusActive
-                ? await recordFocusElapsed()
+                ? await refreshFocusState()
                 : getFocusSummary(settings);
         }
 
@@ -863,6 +1119,10 @@ async function enforceStrictFocus(settings = null) {
     settings = settings || await getSettings();
 
     if (!settings.focusActive || !settings.strictFocusEnabled) {
+        return;
+    }
+
+    if (settings.pomodoroEnabled && settings.pomodoroPhase === "break") {
         return;
     }
 

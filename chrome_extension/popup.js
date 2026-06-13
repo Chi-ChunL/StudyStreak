@@ -26,12 +26,15 @@ const tabButtons = document.querySelectorAll(".side-tab-button");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const todaySessions = document.querySelector("#today-sessions");
 const strictFocusEnabled = document.querySelector("#strict-focus-enabled");
+const pomodoroEnabledInput = document.querySelector("#pomodoro-enabled");
+const pomodoroState = document.querySelector("#pomodoro-state");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
     serverUsername: "",
     serverToken: "",
     focusActive: false,
+    pomodoroEnabled: false,
     syncedSubjects: [],
     syncedSubjectWebsites: {}
 };
@@ -44,7 +47,11 @@ const EMPTY_SUMMARY = {
     idleSeconds: 0,
     lastDomain: "none",
     lastCategory: "idle",
-    topDistractedDomain: "none"
+    topDistractedDomain: "none",
+    pomodoroEnabled: false,
+    pomodoroPhase: "work",
+    pomodoroSecondsLeft: null,
+    pomodoroWorkBlocksCompleted: 0
 };
 
 function parseDomains(value) {
@@ -64,6 +71,13 @@ function formatSeconds(seconds) {
     }
 
     return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatClock(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainingSeconds = safeSeconds % 60;
+    return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
 function formatFocusSummaryText(summary) {
@@ -243,6 +257,7 @@ function renderFocusSummary(summary) {
     };
 
     currentSettings.focusActive = safeSummary.focusActive;
+    currentSettings.pomodoroEnabled = safeSummary.pomodoroEnabled;
     startFocusButton.disabled = (
         !isLoggedIn(currentSettings) ||
         safeSummary.focusActive ||
@@ -254,10 +269,23 @@ function renderFocusSummary(summary) {
         safeSummary.focusActive ||
         !hasSyncedSubjects(currentSettings)
     );
+    pomodoroEnabledInput.disabled = !isLoggedIn(currentSettings) || safeSummary.focusActive;
 
-    focusState.textContent = safeSummary.focusActive
-        ? "Focus is running."
-        : "Focus is stopped.";
+    if (safeSummary.focusActive && safeSummary.pomodoroEnabled) {
+        const phaseLabel = safeSummary.pomodoroPhase === "break" ? "Break" : "Work";
+        focusState.textContent = `Pomodoro ${phaseLabel} is running.`;
+        pomodoroState.textContent =
+            `${phaseLabel}: ${formatClock(safeSummary.pomodoroSecondsLeft)} | ` +
+            `Completed work blocks: ${safeSummary.pomodoroWorkBlocksCompleted}`;
+    } else {
+        focusState.textContent = safeSummary.focusActive
+            ? "Focus is running."
+            : "Focus is stopped.";
+        pomodoroState.textContent = pomodoroEnabledInput.checked
+            ? "Pomodoro 50/10 ready."
+            : "";
+    }
+
     focusScore.textContent = `Focus quality: ${safeSummary.score}%`;
     focusTime.textContent =
         `Focused ${formatSeconds(safeSummary.focusedSeconds)} | ` +
@@ -316,6 +344,7 @@ function setAccountGate(settings) {
     refreshSubjectsButton.disabled = !loggedIn;
     focusSubject.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     strictFocusEnabled.disabled = !loggedIn;
+    pomodoroEnabledInput.disabled = !loggedIn || currentSettings.focusActive;
 
     if (!loggedIn) {
         showPopupTab("account");
@@ -356,6 +385,7 @@ async function loadSettings() {
         remindersEnabled.checked = state.settings.remindersEnabled;
         allowedDomains.value = state.settings.allowedDomains.join("\n");
         strictFocusEnabled.checked = Boolean(state.settings.strictFocusEnabled);
+        pomodoroEnabledInput.checked = Boolean(state.settings.pomodoroEnabled);
 
         currentSettings = {
             ...currentSettings,
@@ -476,6 +506,7 @@ async function saveSettings(showMessage = true) {
         settings: {
             remindersEnabled: remindersEnabled.checked,
             strictFocusEnabled: strictFocusEnabled.checked,
+            pomodoroEnabled: pomodoroEnabledInput.checked,
             allowedDomains: parseDomains(allowedDomains.value)
         }
     });
@@ -495,6 +526,7 @@ async function saveReminderToggle() {
         settings: {
             remindersEnabled: remindersEnabled.checked,
             strictFocusEnabled: strictFocusEnabled.checked,
+            pomodoroEnabled: pomodoroEnabledInput.checked,
             allowedDomains: parseDomains(allowedDomains.value)
         }
     });
@@ -531,11 +563,14 @@ async function startFocus() {
     await saveSettings(false);
     const summary = await chrome.runtime.sendMessage({
         type: "startFocus",
-        subject
+        subject,
+        pomodoroEnabled: pomodoroEnabledInput.checked
     });
 
     renderFocusSummary(summary);
-    statusText.textContent = "Focus started.";
+    statusText.textContent = pomodoroEnabledInput.checked
+        ? "Pomodoro started. Work blocks upload every 50 minutes."
+        : "Focus started.";
 }
 
 async function stopFocus() {
@@ -548,12 +583,22 @@ async function stopFocus() {
     });
 
     renderFocusSummary(summary);
-    renderCompletedSummary(summary);
     const state = await chrome.runtime.sendMessage({
         type: "getCompanionState"
     });
 
+    renderCompletedSummary(
+        summary.completedAt
+            ? summary
+            : state.settings.lastCompletedFocusSession
+    );
     renderFocusHistory(state.settings.focusHistory);
+
+    if (!summary.completedAt && summary.serverUpload?.error) {
+        statusText.textContent = summary.serverUpload.error;
+        return;
+    }
+
     const leaderboardStatus = summary.serverUpload?.ok
         ? `Leaderboard uploaded ${summary.serverUpload.minutes} min`
         : `Leaderboard failed: ${summary.serverUpload?.error || "Unknown error."}`;
@@ -696,6 +741,7 @@ focusSubject.addEventListener("change", () => {
     renderFocusWebsitesForSubject(focusSubject.value);
 });
 strictFocusEnabled.addEventListener("change", saveSettings);
+pomodoroEnabledInput.addEventListener("change", saveSettings);
 saveButton.addEventListener("click", saveSettings);
 testButton.addEventListener("click", testNotification);
 refreshSubjectsButton.addEventListener("click", refreshSubjects);

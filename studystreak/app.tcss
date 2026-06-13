@@ -290,6 +290,11 @@ TabPane {
     height: 5;
 }
 
+#pomodoro-mode-checkbox {
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
 #focus-quality-title {
     margin-top: 2;
     text-align: center;
@@ -344,6 +349,12 @@ TabPane {
     margin-top: 2;
     text-align: center;
     color: orange;
+}
+
+#focus-phase {
+    text-align: center;
+    color: #cfcfcf;
+    text-style: bold;
 }
 
 #focus-message {
@@ -1151,6 +1162,7 @@ Button:hover,
 #focus-notification-checkbox,
 #sync-failed-notification-checkbox,
 #achievement-notification-checkbox,
+#pomodoro-mode-checkbox,
 #light-mode-checkbox,
 #remember-me-checkbox {
     color: #cfcfcf;
@@ -1473,6 +1485,7 @@ Screen.light-mode {
 .light-mode #achievement-sound-checkbox,
 .light-mode #sync-failed-notification-checkbox,
 .light-mode #achievement-notification-checkbox,
+.light-mode #pomodoro-mode-checkbox,
 .light-mode #light-mode-checkbox,
 .light-mode #remember-me-checkbox {
     color: #2b2620;
@@ -1538,6 +1551,11 @@ Screen.light-mode {
 
 .light-mode #focus-timer {
     color: #8b581f;
+    text-style: bold;
+}
+
+.light-mode #focus-phase {
+    color: #254f6f;
     text-style: bold;
 }
 

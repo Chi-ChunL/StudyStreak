@@ -55,6 +55,9 @@ from studystreak.notification import (
 from studystreak.paths import get_app_data_dir
 
 
+POMODORO_WORK_MINUTES = 50
+POMODORO_BREAK_MINUTES = 10
+
 
 plain_fire_art = """
 ⠀⠀⠀⠀⠀⠀⢱⣆⠀⠀⠀⠀⠀⠀
@@ -535,7 +538,7 @@ def get_setup_checklist(data, logged_in, server_online, server_token):
         *incomplete_items[:5],
     ])
 
-
+#show health
 def get_setup_health_display(data, logged_in, server_online, server_token):
     sync_data = data.get("sync", {})
     last_sync_error = sync_data.get("last_sync_error")
@@ -737,6 +740,10 @@ class StudyStreakApp(App):
     focus_seconds_left = 0
     focus_subject = None
     focus_minutes = 0
+    focus_mode = "manual"
+    pomodoro_phase = "work"
+    pomodoro_completed_work_blocks = 0
+    pomodoro_logged_minutes = 0
     logged_in = False
     temp_message_versions = {}
     leaderboard_period = "all"
@@ -881,6 +888,8 @@ class StudyStreakApp(App):
                         placeholder="Focus duration in minutes, e.g. 25",
                         id="focus-minutes-input",
                     )
+
+                    yield Checkbox("Pomodoro 50/10", id="pomodoro-mode-checkbox")
  
                     with Horizontal(id="focus-button-row"):
                         yield Button("Open Website", id="open-website-button")
@@ -888,6 +897,7 @@ class StudyStreakApp(App):
                         yield Button("Cancel Focus", id="cancel-focus-button")
  
                     yield Static("", id="focus-timer")
+                    yield Static("", id="focus-phase")
                     yield Static("", id="focus-message")
 
                 with TabPane("Leaderboard", id="leaderboard-tab"):
@@ -1404,6 +1414,7 @@ class StudyStreakApp(App):
             "#focus-message",
             "#focus-quality-message",
             "#focus-timer",
+            "#focus-phase",
             "#global-message",
             "#login-message",
             "#timetable-message",
@@ -1584,21 +1595,35 @@ class StudyStreakApp(App):
             f"and {deleted_timetable_count} timetable item(s).[/yellow]",
         )
  
-    def start_focus_session(self, subject, minutes):
+    def start_focus_session(self, subject, minutes, pomodoro_mode=False):
         focus_timer = self.query_one("#focus-timer", Static)
         focus_message = self.query_one("#focus-message", Static)
  
         self.focus_subject = subject
-        self.focus_minutes = minutes
-        self.focus_seconds_left = minutes * 60
+        self.focus_mode = "pomodoro" if pomodoro_mode else "manual"
+        self.pomodoro_phase = "work"
+        self.pomodoro_completed_work_blocks = 0
+        self.pomodoro_logged_minutes = 0
+
+        if pomodoro_mode:
+            self.focus_minutes = POMODORO_WORK_MINUTES
+            self.focus_seconds_left = POMODORO_WORK_MINUTES * 60
+        else:
+            self.focus_minutes = minutes
+            self.focus_seconds_left = minutes * 60
  
         if self.focus_timer is not None:
             self.focus_timer.stop()
  
-        self.show_temp_message(
-            "#focus-message",
-            "[yellow]Focus session started. Stay focused until the timer ends.[/yellow]",
-        )
+        if pomodoro_mode:
+            focus_message.update(
+                "[yellow]Pomodoro started. Completed 50 minute work blocks will auto-log until you cancel.[/yellow]"
+            )
+        else:
+            self.show_temp_message(
+                "#focus-message",
+                "[yellow]Focus session started. Stay focused until the timer ends.[/yellow]",
+            )
  
         self.update_focus_display()
  
@@ -1615,6 +1640,18 @@ class StudyStreakApp(App):
             f"[bold orange1]Focus timer:[/bold orange1] "
             f"{minutes_left:02d}:{seconds_left:02d}"
         )
+
+        focus_phase = self.query_one("#focus-phase", Static)
+        focus_phase.display = True
+
+        if self.focus_mode == "pomodoro":
+            if self.pomodoro_phase == "break":
+                focus_phase.update("[bold cyan]Break[/bold cyan]")
+            else:
+                focus_phase.update("[bold green]Work[/bold green]")
+            return
+
+        focus_phase.update("[bold green]Work[/bold green]")
  
     def tick_focus_timer(self):
         self.focus_seconds_left -= 1
@@ -1622,9 +1659,86 @@ class StudyStreakApp(App):
         if self.focus_seconds_left <= 0:
             self.focus_seconds_left = 0
             self.update_focus_display()
+            if self.focus_mode == "pomodoro":
+                self.complete_pomodoro_phase()
+                return
             self.complete_focus_session()
             return
  
+        self.update_focus_display()
+
+    def log_completed_focus_minutes(self, subject, minutes):
+        data = load_data()
+        already_studied_today = has_studied_today(data)
+
+        session = {
+            "subject": str(subject).lower(),
+            "minutes": minutes,
+            "date": str(date.today()),
+            "source": "focus",
+        }
+
+        data["sessions"].append(session)
+        protect_streak_today(data)
+        save_data(data)
+
+        server_token = get_server_token()
+
+        if server_token is not None:
+            self.run_worker(
+                partial(
+                    self.upload_focus_session_in_background,
+                    server_token,
+                    str(subject).lower(),
+                    minutes,
+                ),
+                thread=True,
+                group="focus-upload",
+            )
+
+        self.update_dashboard()
+        achievement_unlocked = self.unlock_earned_achievements()
+
+        updated_data = load_data()
+        streak_count = calculate_current_streak(updated_data)
+
+        return already_studied_today, achievement_unlocked, streak_count
+
+    def complete_pomodoro_phase(self):
+        focus_message = self.query_one("#focus-message", Static)
+
+        if self.pomodoro_phase == "work":
+            completed_subject = self.focus_subject
+            completed_minutes = POMODORO_WORK_MINUTES
+
+            already_studied_today, achievement_unlocked, streak_count = (
+                self.log_completed_focus_minutes(completed_subject, completed_minutes)
+            )
+
+            self.pomodoro_completed_work_blocks += 1
+            self.pomodoro_logged_minutes += completed_minutes
+            self.pomodoro_phase = "break"
+            self.focus_minutes = POMODORO_BREAK_MINUTES
+            self.focus_seconds_left = POMODORO_BREAK_MINUTES * 60
+
+            focus_message.update(
+                f"[green]Work block {self.pomodoro_completed_work_blocks} complete. "
+                f"Logged {completed_minutes} minutes of {completed_subject}. Break started.[/green]"
+            )
+
+            if not already_studied_today and not achievement_unlocked:
+                self.show_streak_effect(streak_count)
+            elif not achievement_unlocked:
+                self.play_focus_complete_sound()
+
+            self.show_focus_notification(completed_subject, completed_minutes)
+            self.update_focus_display()
+            return
+
+        self.pomodoro_phase = "work"
+        self.focus_minutes = POMODORO_WORK_MINUTES
+        self.focus_seconds_left = POMODORO_WORK_MINUTES * 60
+        focus_message.update("[yellow]Break finished. Work started.[/yellow]")
         self.update_focus_display()
  
     def complete_focus_session(self):
@@ -1635,48 +1749,22 @@ class StudyStreakApp(App):
             self.focus_timer.stop()
             self.focus_timer = None
  
-        data = load_data()
-        already_studied_today = has_studied_today(data)
- 
-        session = {
-            "subject": str(self.focus_subject).lower(),
-            "minutes": self.focus_minutes,
-            "date": str(date.today()),
-            "source": "focus",
-        }
- 
-        data["sessions"].append(session)
-        protect_streak_today(data)
-        save_data(data)
-        
-        server_token = get_server_token()
-
-        if server_token is not None:
-            self.run_worker(
-                partial(
-                    self.upload_focus_session_in_background,
-                    server_token,
-                    str(self.focus_subject).lower(),
-                    self.focus_minutes,
-                ),
-                thread=True,
-                group="focus-upload",
-            )
-
-        self.update_dashboard()
-        achievement_unlocked = self.unlock_earned_achievements()
- 
-        updated_data = load_data()
-        streak_count = calculate_current_streak(updated_data)
- 
         completed_subject = self.focus_subject
         completed_minutes = self.focus_minutes
+        already_studied_today, achievement_unlocked, streak_count = (
+            self.log_completed_focus_minutes(completed_subject, completed_minutes)
+        )
  
         self.focus_seconds_left = 0
         self.focus_subject = None
         self.focus_minutes = 0
+        self.focus_mode = "manual"
+        self.pomodoro_phase = "work"
  
         self.show_temp_message("#focus-timer", "[bold green]Focus finished.[/bold green]")
+        focus_phase = self.query_one("#focus-phase", Static)
+        focus_phase.update("")
+        focus_phase.display = False
         self.show_temp_message(
             "#focus-message",
             f"[green]Completed focus session. Logged {completed_minutes} minutes of {completed_subject} study.[/green]",
@@ -1719,9 +1807,27 @@ class StudyStreakApp(App):
         self.focus_seconds_left = 0
         self.focus_subject = None
         self.focus_minutes = 0
+        was_pomodoro = self.focus_mode == "pomodoro"
+        logged_minutes = self.pomodoro_logged_minutes
+        logged_blocks = self.pomodoro_completed_work_blocks
+        self.focus_mode = "manual"
+        self.pomodoro_phase = "work"
+        self.pomodoro_completed_work_blocks = 0
+        self.pomodoro_logged_minutes = 0
  
         focus_timer.update("")
         focus_timer.display = False
+        focus_phase = self.query_one("#focus-phase", Static)
+        focus_phase.update("")
+        focus_phase.display = False
+
+        if was_pomodoro:
+            focus_message.update(
+                f"[yellow]Pomodoro stopped. Logged {logged_blocks} completed work block(s), "
+                f"{logged_minutes} minutes total.[/yellow]"
+            )
+            return
+
         self.show_temp_message("#focus-message", "[yellow]Focus session cancelled. No study time was logged.[/yellow]")
 
     def on_select_changed(self, event: Select.Changed) -> None:
@@ -1966,11 +2072,19 @@ class StudyStreakApp(App):
         self.focus_seconds_left = 0
         self.focus_subject = None
         self.focus_minutes = 0
+        self.focus_mode = "manual"
+        self.pomodoro_phase = "work"
+        self.pomodoro_completed_work_blocks = 0
+        self.pomodoro_logged_minutes = 0
         self.last_notified_sync_error = None
 
         focus_timer = self.query_one("#focus-timer", Static)
         focus_timer.update("")
         focus_timer.display = False
+
+        focus_phase = self.query_one("#focus-phase", Static)
+        focus_phase.update("")
+        focus_phase.display = False
 
 
 
@@ -2876,13 +2990,19 @@ class StudyStreakApp(App):
         if event.button.id == "start-focus-button":
             focus_subject_select = self.query_one("#focus-subject-select", Select)
             focus_minutes_input = self.query_one("#focus-minutes-input", Input)
+            pomodoro_checkbox = self.query_one("#pomodoro-mode-checkbox", Checkbox)
             focus_message = self.query_one("#focus-message", Static)
  
             subject = focus_subject_select.value
             minutes_text = focus_minutes_input.value.strip()
+            pomodoro_mode = pomodoro_checkbox.value
  
             if is_blank_select_value(subject):
                 self.show_temp_message("#focus-message", "[red]Please choose a subject.[/red]")
+                return
+
+            if pomodoro_mode:
+                self.start_focus_session(str(subject), POMODORO_WORK_MINUTES, pomodoro_mode=True)
                 return
  
             if minutes_text == "":

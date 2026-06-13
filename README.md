@@ -77,9 +77,15 @@ Chrome:
 
 Firefox or Zen:
 
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click `Load Temporary Add-on`
-3. Choose `chrome_extension/manifest.json`
+1. Build the Firefox/Zen extension folder:
+
+```bash
+python scripts/build_firefox_extension.py
+```
+
+2. Open `about:debugging#/runtime/this-firefox`
+3. Click `Load Temporary Add-on`
+4. Choose `dist/firefox_extension/manifest.json`
 
 Temporary Firefox/Zen add-ons need to be loaded again after restarting the browser. A signed release will make this smoother later.
 

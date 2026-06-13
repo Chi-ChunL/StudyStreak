@@ -121,6 +121,11 @@ button:disabled {
     line-height: 1.45;
 }
 
+#pomodoro-state {
+    color: #174a7c;
+    font-weight: bold;
+}
+
 h3 {
     color: #174a7c;
     font-size: 13px;
