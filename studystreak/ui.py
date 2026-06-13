@@ -2201,35 +2201,46 @@ class StudyStreakApp(App):
                     self.show_temp_message("#login-message", "[red]That username already exists locally.[/red]")
                     return
 
-                signup_to_server(username, password)
                 create_account(username=username, password=password)
-
                 private_data = login_account(username, password)
                 set_session(username, password, private_data)
 
+            except ValueError as error:
+                self.show_temp_message("#login-message", f"[red]{error}[/red]")
+                return
+
+            cloud_message = "[green]Account created and logged in.[/green]"
+
+            try:
+                signup_to_server(username, password)
+                server_token = login_to_server(username, password)
+                set_server_token(server_token)
+                save_data(private_data)
+                self.sync_focus_quality_from_server(server_token)
+
+            except ValueError as signup_error:
                 try:
                     server_token = login_to_server(username, password)
                     set_server_token(server_token)
                     save_data(private_data)
                     self.sync_focus_quality_from_server(server_token)
-                except ValueError as error:
-                    self.show_temp_message(
-                        "#login-message",
-                        f"[yellow]Account created locally, but server login failed.[/yellow]",
+                    cloud_message = "[green]Account created and linked to existing cloud login.[/green]"
+
+                except ValueError:
+                    cloud_message = (
+                        "[yellow]Account created on this device. "
+                        f"Cloud signup failed: {signup_error}[/yellow]"
                     )
 
-                remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
+            remember_checkbox = self.query_one("#remember-me-checkbox", Checkbox)
 
-                if remember_checkbox.value:
-                    save_remembered_login(username, password)
-                else:
-                    clear_remembered_login()
-            except ValueError as error:
-                self.show_temp_message("#login-message", f"[red]Username or Password Incorrect.[/red]")
-                return
+            if remember_checkbox.value:
+                save_remembered_login(username, password)
+            else:
+                clear_remembered_login()
 
             password_input.value = ""
-            self.show_temp_message("#login-message", "[green]Account created and logged in.[/green]")
+            self.show_temp_message("#login-message", cloud_message)
             self.show_main_app()
             return
 
