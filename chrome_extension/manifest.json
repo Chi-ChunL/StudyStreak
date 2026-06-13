@@ -9,7 +9,14 @@
         "http://127.0.0.1:8000/*"
     ],
     "background": {
+        "scripts": ["background.js"],
         "service_worker": "background.js"
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "studystreak-companion@studystreak.app",
+            "strict_min_version": "121.0"
+        }
     },
     "icons": {
         "128": "icon128.png"
