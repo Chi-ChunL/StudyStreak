@@ -455,6 +455,15 @@ def is_blank_select_value(value):
         or str(value).lower() in ["", "none", "null", "select.null", "select.blank"]
     )
 
+def get_select_index(value):
+    if is_blank_select_value(value):
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
 def calculate_total_minutes(data):
     return sum(session.get("minutes", 0 ) for session in data.get("sessions", []))
 
@@ -2619,11 +2628,11 @@ class StudyStreakApp(App):
                 self.update_dashboard()
                 return
  
-            if selected_index is None or selected_index is False:
+            selected_index = get_select_index(selected_index)
+
+            if selected_index is None:
                 self.show_temp_message("#manage-message", "[yellow]Please select a session to delete.[/yellow]")
                 return
- 
-            selected_index = int(selected_index)
  
             if selected_index < 0 or selected_index >= len(data["sessions"]):
                 self.show_temp_message("#manage-message", "[red]Selected session could not be found.[/red]")
@@ -2824,14 +2833,16 @@ class StudyStreakApp(App):
             select = self.query_one("#manage-timetable-select", Select)
             selected_index = select.value
 
-            if is_blank_select_value(selected_index):
+            selected_index = get_select_index(selected_index)
+
+            if selected_index is None:
                 self.show_temp_message(
                     "#timetable-message",
                     "[yellow]Please choose a planned session to edit.[/yellow]",
                 )
                 return
 
-            self.editing_timetable_index = int(selected_index)
+            self.editing_timetable_index = selected_index
             data = load_data()
 
             if (
@@ -2860,7 +2871,9 @@ class StudyStreakApp(App):
             manage_timetable_select = self.query_one("#manage-timetable-select", Select)
             selected_index = manage_timetable_select.value
 
-            if is_blank_select_value(selected_index):
+            selected_index = get_select_index(selected_index)
+
+            if selected_index is None:
                 self.show_temp_message(
                     "#timetable-message",
                     "[yellow]Please choose a planned session to delete.[/yellow]",
@@ -2868,7 +2881,6 @@ class StudyStreakApp(App):
                 return
 
             data = load_data()
-            selected_index = int(selected_index)
 
             if selected_index < 0 or selected_index >= len(data["timetable"]):
                 self.show_temp_message(
