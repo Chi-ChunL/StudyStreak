@@ -80,6 +80,48 @@ Screen {
 }
 
 
+/* #------------------setup tour guide------------------- */
+
+#tour-guide {
+    width: 100%;
+    height: auto;
+    border: round #8a7a35;
+    background: #17130a;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#tour-guide-text {
+    text-align: center;
+    color: #f0e6c8;
+    margin-bottom: 1;
+}
+
+#tour-guide-buttons {
+    height: auto;
+    align: center middle;
+}
+
+#tour-go-button,
+#tour-done-button,
+#tour-skip-button,
+#tour-end-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+    margin: 0 1;
+}
+
+#tour-go-button:hover,
+#tour-done-button:hover,
+#tour-skip-button:hover,
+#tour-end-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+
 /* #------------------general widgets------------------- */
 
 Input {
@@ -470,9 +512,14 @@ TabPane {
 #settings-weekly-button,
 #settings-health-button,
 #settings-sync-button,
+#settings-tour-button,
+#settings-updates-button,
+#settings-extension-button,
 #settings-appearance-button,
 #settings-sounds-button,
-#settings-subjects-button {
+#settings-subjects-button,
+#settings-privacy-button,
+#settings-focus-import-button {
     width: 100%;
     height: 1;
     margin-bottom: 1;
@@ -486,9 +533,14 @@ TabPane {
 #settings-weekly-button:hover,
 #settings-health-button:hover,
 #settings-sync-button:hover,
+#settings-tour-button:hover,
+#settings-updates-button:hover,
+#settings-extension-button:hover,
 #settings-appearance-button:hover,
 #settings-sounds-button:hover,
-#settings-subjects-button:hover {
+#settings-subjects-button:hover,
+#settings-privacy-button:hover,
+#settings-focus-import-button:hover {
     background: #222222;
     color: white;
     border: none;
@@ -497,16 +549,25 @@ TabPane {
 #weekly-goal-panel,
 #setup-health-panel,
 #sync-panel,
+#tour-panel,
+#updates-panel,
+#extension-panel,
 #appearance-panel,
 #sounds-panel,
-#subjects-panel {
+#subjects-panel,
+#privacy-panel,
+#focus-import-panel {
     width: 100%;
     height: auto;
 }
 
 
 #appearance-panel-title,
-#sound-panel-title {
+#sound-panel-title,
+#tour-panel-title,
+#updates-panel-title,
+#extension-panel-title,
+#privacy-panel-title {
     text-align: center;
     color: #cfcfcf;
     text-style: bold;
@@ -526,7 +587,11 @@ TabPane {
 }
 
 #appearance-message,
-#sounds-message {
+#sounds-message,
+#tour-message,
+#updates-message,
+#extension-message,
+#privacy-message {
     margin-top: 1;
     text-align: center;
     color: green;
@@ -593,6 +658,16 @@ TabPane {
     margin-bottom: 1;
 }
 
+#tour-details,
+#updates-details,
+#extension-details,
+#privacy-details {
+    color: #cfcfcf;
+    border: round #555555;
+    padding: 1;
+    margin-bottom: 1;
+}
+
 #sync-details {
     color: #cfcfcf;
     border: round #555555;
@@ -600,25 +675,48 @@ TabPane {
     margin-bottom: 1;
 }
 
-#sync-button-row {
+#sync-button-row,
+#tour-button-row,
+#updates-button-row,
+#extension-button-row,
+#privacy-button-row {
     height: auto;
     align: center middle;
     margin-top: 1;
 }
 
-#sync-now-button {
+#sync-now-button,
+#start-tour-button,
+#mark-tour-complete-button,
+#check-update-button,
+#open-extension-guide-button,
+#export-data-button,
+#clear-focus-quality-data-button,
+#reset-local-data-button {
     background: #2a2a2a;
     color: #e0e0e0;
     border: tall #777777;
+    margin: 0 1;
 }
 
-#sync-now-button:hover {
+#sync-now-button:hover,
+#start-tour-button:hover,
+#mark-tour-complete-button:hover,
+#check-update-button:hover,
+#open-extension-guide-button:hover,
+#export-data-button:hover,
+#clear-focus-quality-data-button:hover,
+#reset-local-data-button:hover {
     background: #3a3a3a;
     color: white;
     border: tall #aaaaaa;
 }
 
-#sync-message {
+#sync-message,
+#tour-message,
+#updates-message,
+#extension-message,
+#privacy-message {
     margin-top: 1;
     text-align: center;
     color: green;
@@ -789,6 +887,65 @@ TabPane {
     background: #4a2929;
     color: white;
     border: tall #c06a6a;
+}
+
+#setup-tour-prompt-box,
+#setup-tour-box,
+#data-action-confirm-box {
+    width: 70;
+    height: auto;
+    border: round #555555;
+    background: #111111;
+    padding: 1 2;
+    align: center middle;
+}
+
+#setup-tour-prompt-title,
+#setup-tour-title,
+#data-action-confirm-title {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#setup-tour-prompt-message,
+#setup-tour-message,
+#data-action-confirm-message {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#setup-tour-prompt-buttons,
+#setup-tour-buttons,
+#data-action-confirm-buttons {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#start-setup-tour-button,
+#skip-setup-tour-button,
+#tour-back-button,
+#tour-next-button,
+#tour-close-button,
+#cancel-data-action-button,
+#confirm-data-action-button {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: tall #777777;
+    margin: 0 1;
+}
+
+#start-setup-tour-button:hover,
+#skip-setup-tour-button:hover,
+#tour-back-button:hover,
+#tour-next-button:hover,
+#tour-close-button:hover,
+#cancel-data-action-button:hover,
+#confirm-data-action-button:hover {
+    background: #3a3a3a;
+    color: white;
+    border: tall #aaaaaa;
 }
 
 
@@ -1088,9 +1245,14 @@ Button:hover,
 #settings-weekly-button,
 #settings-health-button,
 #settings-sync-button,
+#settings-tour-button,
+#settings-updates-button,
+#settings-extension-button,
 #settings-appearance-button,
 #settings-sounds-button,
 #settings-subjects-button,
+#settings-privacy-button,
+#settings-focus-import-button,
 #subject-add-tab,
 #subject-edit-tab,
 #subject-delete-tab {
@@ -1106,9 +1268,14 @@ Button:hover,
 #settings-weekly-button:hover,
 #settings-health-button:hover,
 #settings-sync-button:hover,
+#settings-tour-button:hover,
+#settings-updates-button:hover,
+#settings-extension-button:hover,
 #settings-appearance-button:hover,
 #settings-sounds-button:hover,
 #settings-subjects-button:hover,
+#settings-privacy-button:hover,
+#settings-focus-import-button:hover,
 #subject-add-tab:hover,
 #subject-edit-tab:hover,
 #subject-delete-tab:hover {
@@ -1126,6 +1293,10 @@ Button:hover,
 #today-timetable,
 #timetable-grid,
 #setup-health-details,
+#tour-details,
+#updates-details,
+#extension-details,
+#privacy-details,
 #sync-details,
 #timetable-form-panel {
     background: #111111;
@@ -1137,7 +1308,11 @@ Button:hover,
 #goal-panel-title,
 #setup-health-title,
 #sync-panel-title,
+#tour-panel-title,
+#updates-panel-title,
+#extension-panel-title,
 #appearance-panel-title,
+#privacy-panel-title,
 #sound-panel-title,
 #subject-panel-title,
 #subject-add-title,
@@ -1409,9 +1584,14 @@ Screen.light-mode {
 .light-mode #settings-weekly-button,
 .light-mode #settings-health-button,
 .light-mode #settings-sync-button,
+.light-mode #settings-tour-button,
+.light-mode #settings-updates-button,
+.light-mode #settings-extension-button,
 .light-mode #settings-appearance-button,
 .light-mode #settings-sounds-button,
 .light-mode #settings-subjects-button,
+.light-mode #settings-privacy-button,
+.light-mode #settings-focus-import-button,
 .light-mode #subject-add-tab,
 .light-mode #subject-edit-tab,
 .light-mode #subject-delete-tab {
@@ -1428,15 +1608,49 @@ Screen.light-mode {
 .light-mode #settings-weekly-button:hover,
 .light-mode #settings-health-button:hover,
 .light-mode #settings-sync-button:hover,
+.light-mode #settings-tour-button:hover,
+.light-mode #settings-updates-button:hover,
+.light-mode #settings-extension-button:hover,
 .light-mode #settings-appearance-button:hover,
 .light-mode #settings-sounds-button:hover,
 .light-mode #settings-subjects-button:hover,
+.light-mode #settings-privacy-button:hover,
+.light-mode #settings-focus-import-button:hover,
 .light-mode #subject-add-tab:hover,
 .light-mode #subject-edit-tab:hover,
 .light-mode #subject-delete-tab:hover {
     background: #d9c8aa;
     color: #2b2620;
     border: none;
+}
+
+.light-mode #tour-guide {
+    background: #fff4d6;
+    color: #2b2620;
+    border: round #9a8567;
+}
+
+.light-mode #tour-guide-text {
+    color: #2b2620;
+}
+
+.light-mode #tour-go-button,
+.light-mode #tour-done-button,
+.light-mode #tour-skip-button,
+.light-mode #tour-end-button {
+    background: #6f8799;
+    color: #fff8e8;
+    border: round #526a7c;
+    text-style: bold;
+}
+
+.light-mode #tour-go-button:hover,
+.light-mode #tour-done-button:hover,
+.light-mode #tour-skip-button:hover,
+.light-mode #tour-end-button:hover {
+    background: #5c7486;
+    color: white;
+    border: round #405b6d;
 }
 
 .light-mode #setup-checklist,
@@ -1448,6 +1662,10 @@ Screen.light-mode {
 .light-mode #today-timetable,
 .light-mode #timetable-grid,
 .light-mode #setup-health-details,
+.light-mode #tour-details,
+.light-mode #updates-details,
+.light-mode #extension-details,
+.light-mode #privacy-details,
 .light-mode #sync-details,
 .light-mode #timetable-form-panel {
     background: #fbf1dd;
@@ -1459,7 +1677,11 @@ Screen.light-mode {
 .light-mode #goal-panel-title,
 .light-mode #setup-health-title,
 .light-mode #sync-panel-title,
+.light-mode #tour-panel-title,
+.light-mode #updates-panel-title,
+.light-mode #extension-panel-title,
 .light-mode #appearance-panel-title,
+.light-mode #privacy-panel-title,
 .light-mode #sound-panel-title,
 .light-mode #subject-panel-title,
 .light-mode #subject-add-title,

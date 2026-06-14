@@ -149,6 +149,29 @@ def check_server_status() -> bool:
 
     except requests.RequestException:
         return False
+
+
+def get_latest_package_version(package_name: str = "studystreak") -> str:
+    #get latest package version from PyPI for the in-app update checker
+    try:
+        response = requests.get(
+            f"https://pypi.org/pypi/{package_name}/json",
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not check PyPI for updates: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Update check", response)
+
+    data = response.json()
+    version = data.get("info", {}).get("version")
+
+    if not isinstance(version, str) or version.strip() == "":
+        raise ValueError("PyPI did not return a package version.")
+
+    return version.strip()
     
 def get_profile_data(token: str) -> str | None:
     #get encrypted profile data from server

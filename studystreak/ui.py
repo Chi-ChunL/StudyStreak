@@ -1,6 +1,8 @@
+import json
 import webbrowser
 from datetime import date, timedelta, datetime
 from functools import partial
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -20,6 +22,8 @@ from textual.widgets import (
 
 from studystreak.storage import (
     clean_website_list,
+    get_default_data,
+    get_utc_now_text,
     load_data,
     merge_focus_quality_sessions,
     merge_subject_websites,
@@ -27,6 +31,7 @@ from studystreak.storage import (
     repair_data,
     save_data,
     save_focus_quality_json,
+    save_local_data_without_sync,
 )
 from studystreak.accounts import create_account, list_accounts, login_account, logout_account
 from studystreak.accounts import normalise_username, validate_password, validate_username
@@ -46,6 +51,7 @@ from studystreak.api_client import (
     get_profile_data,
     get_focus_quality_sessions,
     get_subject_websites,
+    get_latest_package_version,
 )
 from studystreak.profile_sync import decrypt_profile_data
 from studystreak.notification import (
@@ -59,6 +65,93 @@ from studystreak.paths import get_app_data_dir
 
 POMODORO_WORK_MINUTES = 50
 POMODORO_BREAK_MINUTES = 10
+
+SETUP_TOUR_STEPS = [
+    {
+        "id": "dashboard",
+        "title": "Dashboard",
+        "target_label": "Open Dashboard",
+        "body": (
+            "This is your home base. Check your streak, setup checklist, "
+            "weekly goal, and recent sessions."
+        ),
+        "hint": "Look around, then press Done.",
+        "manual": True,
+    },
+    {
+        "id": "subject",
+        "title": "Add A Subject",
+        "target_label": "Add Subject",
+        "body": (
+            "Create the first subject you study, like maths, physics, "
+            "or computer science."
+        ),
+        "hint": "Add a subject to continue.",
+    },
+    {
+        "id": "websites",
+        "title": "Save Subject Websites",
+        "target_label": "Save Websites",
+        "body": (
+            "Save the websites you use for that subject. Focus Mode and "
+            "the browser extension can auto-fill them later."
+        ),
+        "hint": "Choose a subject and save at least one website.",
+    },
+    {
+        "id": "timetable",
+        "title": "Plan A Session",
+        "target_label": "Open Timetable",
+        "body": (
+            "Add one weekly planned session so StudyStreak and the extension "
+            "know when study time is coming up."
+        ),
+        "hint": "Save one timetable session to continue.",
+    },
+    {
+        "id": "session",
+        "title": "Protect Your Streak",
+        "target_label": "Log Session",
+        "body": (
+            "Log a short study session. The first study block of the day "
+            "protects your streak."
+        ),
+        "hint": "Log a session to continue.",
+    },
+    {
+        "id": "focus",
+        "title": "Try Focus Mode",
+        "target_label": "Open Focus Mode",
+        "body": (
+            "Focus Mode opens your subject websites, runs timers, and can "
+            "use Pomodoro 50/10."
+        ),
+        "hint": "Try it now, or press Done/Skip if you are not studying yet.",
+        "optional": True,
+    },
+    {
+        "id": "sync",
+        "title": "Check Sync",
+        "target_label": "Open Sync",
+        "body": (
+            "Sync pulls browser focus data and subject websites from your "
+            "account when you are online."
+        ),
+        "hint": "Press Sync Now if you are online, or Done if you are staying local.",
+        "optional": True,
+    },
+    {
+        "id": "finish",
+        "title": "Finish",
+        "target_label": "Finish Tour",
+        "body": (
+            "You now know the main loop: subjects, websites, timetable, "
+            "study sessions, focus mode, and sync."
+        ),
+        "hint": "Press Done to finish the tour.",
+        "manual": True,
+    },
+]
 
 
 plain_fire_art = """
@@ -182,6 +275,20 @@ def get_weekly_goal_status(current, goal):
         return "[green]Completed[/green]"
  
     return "[bold #0b7a39]Keep going[/bold #0b7a39]"
+
+def get_weekly_goal_nudge(current, goal):
+    if goal <= 0:
+        return "Set a weekly goal to get a study pace suggestion."
+
+    remaining_minutes = max(0, goal - current)
+
+    if remaining_minutes == 0:
+        return "Goal complete. Extra study now builds a buffer for future weeks."
+
+    today = date.today()
+    days_left = max(1, 7 - today.weekday())
+    minutes_per_day = (remaining_minutes + days_left - 1) // days_left
+    return f"{remaining_minutes} min left this week. Aim for about {minutes_per_day} min/day."
  
  
 def has_studied_today(data):
@@ -384,15 +491,24 @@ def get_subject_stats(data):
     focus_sessions = data.get("focus_quality_sessions", [])
 
     subject_total = {}
+    subject_weekly_total = {}
+    subject_days = {}
+    current_week_start = date.today() - timedelta(days=date.today().weekday())
 
     for session in sessions:
         subject = session["subject"]
         minutes = session["minutes"]
+        session_day = date.fromisoformat(session["date"])
 
         if subject not in subject_total:
             subject_total[subject] = 0
 
         subject_total[subject] += minutes
+        subject_days.setdefault(subject, {})
+        subject_days[subject][session["date"]] = subject_days[subject].get(session["date"], 0) + minutes
+
+        if current_week_start <= session_day <= date.today():
+            subject_weekly_total[subject] = subject_weekly_total.get(subject, 0) + minutes
 
     focus_by_subject = {}
 
@@ -400,17 +516,23 @@ def get_subject_stats(data):
         subject = session.get("subject", "unknown")
         focused_seconds = session.get("focused_seconds", 0)
         score = session.get("score", 0)
+        top_distraction = session.get("top_distracted_domain", "none")
 
         if subject not in focus_by_subject:
             focus_by_subject[subject] = {
                 "sessions": 0,
                 "focused_seconds": 0,
                 "total_score": 0,
+                "distractions": {},
             }
 
         focus_by_subject[subject]["sessions"] += 1
         focus_by_subject[subject]["focused_seconds"] += focused_seconds
         focus_by_subject[subject]["total_score"] += score
+        if top_distraction and top_distraction != "none":
+            focus_by_subject[subject]["distractions"][top_distraction] = (
+                focus_by_subject[subject]["distractions"].get(top_distraction, 0) + 1
+            )
 
     lines = ["[bold]Subject Stats[/bold]"]
 
@@ -433,20 +555,144 @@ def get_subject_stats(data):
         else:
             time_text = f"{remaining_minutes}m"
 
-        lines.append(f"{subject} - {time_text}")
+        weekly_minutes = subject_weekly_total.get(subject, 0)
+        best_day = "none"
+
+        if subject_days.get(subject):
+            best_day = max(
+                subject_days[subject].items(),
+                key=lambda item: item[1],
+            )[0]
+
+        lines.append(f"[bold]{subject}[/bold]")
+        lines.append(f"  Total: {time_text}")
+        lines.append(f"  This week: {weekly_minutes}m")
+        lines.append(f"  Best study day: {best_day}")
 
         focus_stats = focus_by_subject.get(subject)
 
         if focus_stats:
             focus_minutes = focus_stats["focused_seconds"] // 60
             average_score = focus_stats["total_score"] // focus_stats["sessions"]
+            top_distraction = "none"
+
+            if focus_stats["distractions"]:
+                top_distraction = max(
+                    focus_stats["distractions"].items(),
+                    key=lambda item: item[1],
+                )[0]
 
             lines.append(
-                f"  Chrome focus - {focus_minutes}m focused, "
-                f"{average_score}% average quality"
+                f"  Focus quality: {average_score}% average, {focus_minutes}m focused"
             )
+            lines.append(f"  Most common distraction: {top_distraction}")
+        lines.append("")
 
     return "\n".join(lines)
+
+def get_installed_version():
+    try:
+        return package_version("studystreak")
+    except PackageNotFoundError:
+        return "local"
+
+def version_tuple(version_text):
+    parts = []
+
+    for part in str(version_text).split("."):
+        digits = "".join(character for character in part if character.isdigit())
+        parts.append(int(digits) if digits else 0)
+
+    while len(parts) < 3:
+        parts.append(0)
+
+    return tuple(parts[:3])
+
+def version_is_newer(latest_version, installed_version):
+    if installed_version == "local":
+        return False
+
+    return version_tuple(latest_version) > version_tuple(installed_version)
+
+def get_update_status_display(data):
+    update_check = data.get("update_check", {})
+    installed_version = update_check.get("installed_version") or get_installed_version()
+    latest_version = update_check.get("latest_version")
+    last_checked = update_check.get("last_checked")
+    last_error = update_check.get("last_error")
+
+    lines = [
+        f"[bold]Installed version:[/bold] {installed_version}",
+    ]
+
+    if last_error:
+        lines.append(f"[bold]Last check:[/bold] [red]Failed[/red] - {last_error}")
+        return "\n".join(lines)
+
+    if latest_version:
+        if update_check.get("update_available"):
+            lines.append(f"[bold]Latest PyPI version:[/bold] [yellow]{latest_version}[/yellow]")
+            lines.append("[yellow]Update with: pip install --upgrade studystreak[/yellow]")
+        else:
+            lines.append(f"[bold]Latest PyPI version:[/bold] [green]{latest_version}[/green]")
+            lines.append("[green]StudyStreak is up to date.[/green]")
+    else:
+        lines.append("[yellow]Press Check for Updates to compare with PyPI.[/yellow]")
+
+    if last_checked:
+        lines.append(f"[bold]Last checked:[/bold] {last_checked}")
+
+    return "\n".join(lines)
+
+def get_extension_status_display(data, server_token):
+    subjects = data.get("subjects", [])
+    subject_websites = data.get("subject_websites", {})
+    website_sets = sum(1 for websites in subject_websites.values() if websites)
+    timetable = data.get("timetable", [])
+    focus_sessions = data.get("focus_quality_sessions", [])
+    latest_focus = focus_sessions[0].get("completed_at", "none") if focus_sessions else "none"
+    sync_ready = "[green]Ready[/green]" if server_token is not None else "[yellow]Log in online first[/yellow]"
+
+    return "\n".join([
+        f"[bold]Cloud sync:[/bold] {sync_ready}",
+        f"[bold]Subjects synced:[/bold] {len(subjects)}",
+        f"[bold]Subject website sets:[/bold] {website_sets}",
+        f"[bold]Timetable reminders:[/bold] {len(timetable)}",
+        f"[bold]Chrome/Firefox focus summaries:[/bold] {len(focus_sessions)}",
+        f"[bold]Latest focus sync:[/bold] {latest_focus}",
+        "",
+        "[bold]Chrome:[/bold] load the chrome_extension folder in chrome://extensions.",
+        "[bold]Firefox/Zen:[/bold] use the signed add-on or build dist/firefox_extension.",
+    ])
+
+def get_privacy_display(data):
+    focus_count = len(data.get("focus_quality_sessions", []))
+    session_count = len(data.get("sessions", []))
+    subject_count = len(data.get("subjects", []))
+    sync_data = data.get("sync", {})
+
+    return "\n".join([
+        f"[bold]Study sessions:[/bold] {session_count}",
+        f"[bold]Subjects:[/bold] {subject_count}",
+        f"[bold]Focus-quality summaries:[/bold] {focus_count}",
+        f"[bold]Last cloud sync:[/bold] {sync_data.get('last_cloud_sync') or 'never'}",
+        "",
+        "Export Data saves a JSON copy to the StudyStreak data folder.",
+        "Clear Focus Quality removes browser focus summaries from this device.",
+        "Reset Local Study Data clears this profile on this device only.",
+    ])
+
+def should_offer_setup_tour(data):
+    onboarding = data.get("onboarding", {})
+
+    if onboarding.get("tour_completed") or onboarding.get("tour_declined"):
+        return False
+
+    return (
+        len(data.get("subjects", [])) == 0
+        and len(data.get("sessions", [])) == 0
+        and len(data.get("timetable", [])) == 0
+    )
  
 def is_blank_select_value(value):
     return (
@@ -734,6 +980,132 @@ class DeleteSubjectConfirmScreen(ModalScreen):
             self.app.delete_subject_and_sessions(self.subject)
             self.app.pop_screen()
             return
+
+
+class SetupTourPromptScreen(ModalScreen):
+    def compose(self) -> ComposeResult:
+        with Container(id="setup-tour-prompt-box"):
+            yield Static("[bold]Want a quick tour?[/bold]", id="setup-tour-prompt-title")
+            yield Static(
+                "StudyStreak can guide you through the real setup while you click around the app.",
+                id="setup-tour-prompt-message",
+            )
+            with Horizontal(id="setup-tour-prompt-buttons"):
+                yield Button("Start Tour", id="start-setup-tour-button")
+                yield Button("Skip", id="skip-setup-tour-button")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "start-setup-tour-button":
+            self.app.pop_screen()
+            self.app.start_setup_tour()
+            return
+
+        if event.button.id == "skip-setup-tour-button":
+            self.app.dismiss_setup_tour()
+            self.app.pop_screen()
+            return
+
+
+class SetupTourScreen(ModalScreen):
+    steps = [
+        (
+            "Dashboard",
+            "The dashboard shows your current streak, studied minutes, weekly goal progress, setup checklist, and recent sessions.",
+        ),
+        (
+            "Subjects",
+            "Add subjects in Settings > Subjects. Save the websites you use for each subject so Focus Mode and the extension can auto-fill them.",
+        ),
+        (
+            "Log Session",
+            "Use Log Session for quick manual study blocks. The first study block of a day protects your streak.",
+        ),
+        (
+            "Timetable",
+            "Plan weekly sessions in Timetable. The browser extension can remind you when today's planned sessions start.",
+        ),
+        (
+            "Focus Mode",
+            "Use Focus Mode for timed study. Pomodoro 50/10 logs completed work blocks automatically.",
+        ),
+        (
+            "Browser Extension",
+            "The extension tracks focus quality, shows an overlay timer, syncs subjects/websites, and can enable Strict Focus.",
+        ),
+        (
+            "Settings",
+            "Use Sync, Updates, Extension, and Data & Privacy to keep StudyStreak healthy and understandable.",
+        ),
+    ]
+
+    def __init__(self, step_index=0):
+        super().__init__()
+        self.step_index = step_index
+
+    def compose(self) -> ComposeResult:
+        title, message = self.steps[self.step_index]
+
+        with Container(id="setup-tour-box"):
+            yield Static(
+                f"[bold]{self.step_index + 1}/{len(self.steps)} - {title}[/bold]",
+                id="setup-tour-title",
+            )
+            yield Static(message, id="setup-tour-message")
+            with Horizontal(id="setup-tour-buttons"):
+                yield Button("Back", id="tour-back-button", disabled=self.step_index == 0)
+                yield Button(
+                    "Finish" if self.step_index == len(self.steps) - 1 else "Next",
+                    id="tour-next-button",
+                )
+                yield Button("Close", id="tour-close-button")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "tour-back-button":
+            if self.step_index > 0:
+                self.step_index -= 1
+                self.refresh(recompose=True)
+            return
+
+        if event.button.id == "tour-next-button":
+            if self.step_index >= len(self.steps) - 1:
+                self.app.complete_setup_tour()
+                self.app.pop_screen()
+                return
+
+            self.step_index += 1
+            self.refresh(recompose=True)
+            return
+
+        if event.button.id == "tour-close-button":
+            self.app.pop_screen()
+            return
+
+
+class DataActionConfirmScreen(ModalScreen):
+    def __init__(self, action_id, title, message, confirm_label):
+        super().__init__()
+        self.action_id = action_id
+        self.title = title
+        self.message = message
+        self.confirm_label = confirm_label
+
+    def compose(self) -> ComposeResult:
+        with Container(id="data-action-confirm-box"):
+            yield Static(f"[bold red]{self.title}[/bold red]", id="data-action-confirm-title")
+            yield Static(self.message, id="data-action-confirm-message")
+            with Horizontal(id="data-action-confirm-buttons"):
+                yield Button("Cancel", id="cancel-data-action-button")
+                yield Button(self.confirm_label, id="confirm-data-action-button")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel-data-action-button":
+            self.app.pop_screen()
+            return
+
+        if event.button.id == "confirm-data-action-button":
+            self.app.run_data_privacy_action(self.action_id)
+            self.app.pop_screen()
+            return
  
  
 class StudyStreakApp(App):
@@ -762,6 +1134,10 @@ class StudyStreakApp(App):
     editing_timetable_index = None
     chrome_sync_protected_streak = False
     server_is_online = None
+    tour_active = False
+    tour_step_index = 0
+    checking_tour_progress = False
+    suppress_next_tab_sound = False
  
     def compose(self) -> ComposeResult:
         yield Header()
@@ -789,9 +1165,16 @@ class StudyStreakApp(App):
             with Horizontal(id="account-row"):
                 yield Static("", id="account-label")
                 yield Button("Logout", id="logout-button")
-            
 
-            with TabbedContent(initial="dashboard-tab"):
+            with Container(id="tour-guide"):
+                yield Static("", id="tour-guide-text")
+                with Horizontal(id="tour-guide-buttons"):
+                    yield Button("Take Me There", id="tour-go-button")
+                    yield Button("Done", id="tour-done-button")
+                    yield Button("Skip", id="tour-skip-button")
+                    yield Button("End Tour", id="tour-end-button")
+
+            with TabbedContent(initial="dashboard-tab", id="main-tabs"):
                 with TabPane("Dashboard", id="dashboard-tab"):
                     yield Static("", id="setup-checklist")
                     yield Static("", id="dashboard")
@@ -935,9 +1318,13 @@ class StudyStreakApp(App):
                             yield Button("Weekly Goal", id="settings-weekly-button")
                             yield Button("Setup Health", id="settings-health-button")
                             yield Button("Sync", id="settings-sync-button")
+                            yield Button("Tour", id="settings-tour-button")
+                            yield Button("Updates", id="settings-updates-button")
+                            yield Button("Extension", id="settings-extension-button")
                             yield Button("Appearance", id="settings-appearance-button")
                             yield Button("Sounds", id="settings-sounds-button")
                             yield Button("Subjects", id="settings-subjects-button")
+                            yield Button("Data & Privacy", id="settings-privacy-button")
                             yield Button("Focus Import", id="settings-focus-import-button")
 
                         with Vertical(id="settings-content"):
@@ -967,10 +1354,49 @@ class StudyStreakApp(App):
 
                                 yield Static("", id="sync-message")
 
+                            with Vertical(id="tour-panel"):
+                                yield Static("Guided tour", id="tour-panel-title")
+                                yield Static("", id="tour-details")
+
+                                with Horizontal(id="tour-button-row"):
+                                    yield Button("Start Tour", id="start-tour-button")
+                                    yield Button("Mark Complete", id="mark-tour-complete-button")
+
+                                yield Static("", id="tour-message")
+
+                            with Vertical(id="updates-panel"):
+                                yield Static("Updates", id="updates-panel-title")
+                                yield Static("", id="updates-details")
+
+                                with Horizontal(id="updates-button-row"):
+                                    yield Button("Check for Updates", id="check-update-button")
+
+                                yield Static("", id="updates-message")
+
+                            with Vertical(id="extension-panel"):
+                                yield Static("Browser extension", id="extension-panel-title")
+                                yield Static("", id="extension-details")
+
+                                with Horizontal(id="extension-button-row"):
+                                    yield Button("Open Extension Guide", id="open-extension-guide-button")
+
+                                yield Static("", id="extension-message")
+
                             with Vertical(id="appearance-panel"):
                                 yield Static("Appearance", id="appearance-panel-title")
                                 yield Checkbox("Light mode", id="light-mode-checkbox")
                                 yield Static("", id="appearance-message")
+
+                            with Vertical(id="privacy-panel"):
+                                yield Static("Data & privacy", id="privacy-panel-title")
+                                yield Static("", id="privacy-details")
+
+                                with Horizontal(id="privacy-button-row"):
+                                    yield Button("Export Data", id="export-data-button")
+                                    yield Button("Clear Focus Quality", id="clear-focus-quality-data-button")
+                                    yield Button("Reset Local Study Data", id="reset-local-data-button")
+
+                                yield Static("", id="privacy-message")
 
                             with Vertical(id="focus-import-panel"):
         
@@ -1073,19 +1499,29 @@ class StudyStreakApp(App):
         #show login first
         login_container = self.query_one("#login-container")
         main_container = self.query_one("#main-container")
+        tour_guide = self.query_one("#tour-guide")
 
         login_container.display = True
         main_container.display = False
+        tour_guide.display = False
 
         subjects_panel = self.query_one("#subjects-panel")
         setup_health_panel = self.query_one("#setup-health-panel")
         sync_panel = self.query_one("#sync-panel")
+        tour_panel = self.query_one("#tour-panel")
+        updates_panel = self.query_one("#updates-panel")
+        extension_panel = self.query_one("#extension-panel")
         appearance_panel = self.query_one("#appearance-panel")
+        privacy_panel = self.query_one("#privacy-panel")
 
         subjects_panel.display = False
         setup_health_panel.display = False
         sync_panel.display = False
+        tour_panel.display = False
+        updates_panel.display = False
+        extension_panel.display = False
         appearance_panel.display = False
+        privacy_panel.display = False
 
         subject_edit_panel = self.query_one("#subject-edit-panel")
         subject_delete_panel = self.query_one("#subject-delete-panel")
@@ -1117,6 +1553,7 @@ class StudyStreakApp(App):
         weekly_goal = data["weekly_goal"]
         weekly_progress_bar = create_progress_bar(weekly_minutes, weekly_goal)
         weekly_goal_status = get_weekly_goal_status(weekly_minutes, weekly_goal)
+        weekly_goal_nudge = get_weekly_goal_nudge(weekly_minutes, weekly_goal)
 
 
         dashboard = self.query_one("#dashboard", Static)
@@ -1159,7 +1596,8 @@ class StudyStreakApp(App):
             f"[bold]Sessions today:[/bold] {today_sessions}\n"
             f"[bold]Weekly goal:[/bold] {weekly_minutes} / {weekly_goal} minutes\n"
             f"[bold]Progress:[/bold] {weekly_progress_bar}\n"
-            f"[bold]Weekly goal status:[/bold] {weekly_goal_status}"
+            f"[bold]Weekly goal status:[/bold] {weekly_goal_status}\n"
+            f"[bold]Pace:[/bold] {weekly_goal_nudge}"
         )
  
         recent_sessions.update(get_recent_sessions(data))
@@ -1194,6 +1632,11 @@ class StudyStreakApp(App):
 
         self.update_sync_status()
         self.update_setup_health_panel()
+        self.update_extension_panel()
+        self.update_privacy_panel()
+        self.update_tour_panel()
+        self.update_updates_panel()
+        self.check_tour_progress()
 
     def update_sync_status(self):
         sync_status_label = self.query_one("#sync-status-label", Static)
@@ -1250,6 +1693,42 @@ class StudyStreakApp(App):
             )
         )
 
+    def update_tour_panel(self):
+        data = load_data()
+        onboarding = data.get("onboarding", {})
+        tour_details = self.query_one("#tour-details", Static)
+
+        if onboarding.get("tour_completed"):
+            status = "[green]Completed[/green]"
+        elif onboarding.get("tour_declined"):
+            status = "[yellow]Skipped[/yellow]"
+        else:
+            status = "[yellow]Not viewed yet[/yellow]"
+
+        tour_details.update(
+            "\n".join([
+                f"[bold]Tour status:[/bold] {status}",
+                "The tour now stays inside the app while you click through setup.",
+                "It guides Dashboard, Subjects, websites, Timetable, Log Session, Focus Mode, and Sync.",
+                "You can replay it any time from here.",
+            ])
+        )
+
+    def update_updates_panel(self):
+        self.query_one("#updates-details", Static).update(
+            get_update_status_display(load_data())
+        )
+
+    def update_extension_panel(self):
+        self.query_one("#extension-details", Static).update(
+            get_extension_status_display(load_data(), get_server_token())
+        )
+
+    def update_privacy_panel(self):
+        self.query_one("#privacy-details", Static).update(
+            get_privacy_display(load_data())
+        )
+
     def apply_theme(self):
         data = load_data()
         appearance_settings = data.get("appearance_settings", {})
@@ -1297,7 +1776,11 @@ class StudyStreakApp(App):
             "#weekly-goal-panel",
             "#setup-health-panel",
             "#sync-panel",
+            "#tour-panel",
+            "#updates-panel",
+            "#extension-panel",
             "#appearance-panel",
+            "#privacy-panel",
             "#sounds-panel",
             "#subjects-panel",
             "#focus-import-panel",
@@ -1312,8 +1795,20 @@ class StudyStreakApp(App):
         if active_panel_id == "#sync-panel":
             self.update_sync_status()
 
+        if active_panel_id == "#tour-panel":
+            self.update_tour_panel()
+
+        if active_panel_id == "#updates-panel":
+            self.update_updates_panel()
+
+        if active_panel_id == "#extension-panel":
+            self.update_extension_panel()
+
         if active_panel_id == "#appearance-panel":
             self.update_appearance_settings_panel()
+
+        if active_panel_id == "#privacy-panel":
+            self.update_privacy_panel()
 
         if active_panel_id == "#sounds-panel":
             self.update_sound_settings_panel()
@@ -1425,7 +1920,11 @@ class StudyStreakApp(App):
             "#manage-message",
             "#settings-message",
             "#sync-message",
+            "#tour-message",
+            "#updates-message",
+            "#extension-message",
             "#appearance-message",
+            "#privacy-message",
             "#subject-message",
             "#edit-website-message",
             "#delete-subject-message",
@@ -1458,7 +1957,12 @@ class StudyStreakApp(App):
         )
 
     def play_ui_sound(self):
-        self.play_app_sound("ui")
+        if not self.sound_is_enabled("ui"):
+            return
+
+        # UI sounds are tiny and async on Windows; playing them directly keeps
+        # their order from racing achievement/focus sounds.
+        play_sound("ui")
 
     def play_focus_complete_sound(self):
         self.play_app_sound("focus_complete")
@@ -1878,6 +2382,10 @@ class StudyStreakApp(App):
             edit_website_input.load_text(format_website_list_text(saved_websites))
     
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if self.suppress_next_tab_sound:
+            self.suppress_next_tab_sound = False
+            return
+
         if self.logged_in:
             self.play_ui_sound()
 
@@ -2097,6 +2605,381 @@ class StudyStreakApp(App):
 
         return local_data
 
+    def offer_setup_tour_if_needed(self, force=False):
+        data = load_data()
+
+        if not force and not should_offer_setup_tour(data):
+            return
+
+        self.set_timer(0.4, lambda: self.push_screen(SetupTourPromptScreen()))
+
+    def get_current_tour_step(self):
+        if self.tour_step_index < 0:
+            self.tour_step_index = 0
+
+        if self.tour_step_index >= len(SETUP_TOUR_STEPS):
+            self.tour_step_index = len(SETUP_TOUR_STEPS) - 1
+
+        return SETUP_TOUR_STEPS[self.tour_step_index]
+
+    def set_main_tab(self, tab_id):
+        main_tabs = self.query_one("#main-tabs", TabbedContent)
+
+        if main_tabs.active == tab_id:
+            return
+
+        self.suppress_next_tab_sound = True
+        main_tabs.active = tab_id
+
+    def show_subject_subpanel(self, active_panel_id):
+        panel_ids = [
+            "#subject-add-panel",
+            "#subject-edit-panel",
+            "#subject-delete-panel",
+        ]
+
+        for panel_id in panel_ids:
+            self.query_one(panel_id).display = panel_id == active_panel_id
+
+    def focus_tour_widget(self, selector):
+        try:
+            self.query_one(selector).focus()
+        except Exception:
+            pass
+
+    def set_first_subject_if_available(self, selector):
+        data = load_data()
+        subjects = data.get("subjects", [])
+
+        if len(subjects) == 0:
+            return
+
+        try:
+            self.query_one(selector, Select).value = subjects[0]
+        except Exception:
+            pass
+
+    def navigate_to_current_tour_step(self):
+        step = self.get_current_tour_step()
+        step_id = step["id"]
+
+        if step_id == "dashboard":
+            self.set_main_tab("dashboard-tab")
+            return
+
+        if step_id == "subject":
+            self.set_main_tab("settings-tab")
+            self.show_settings_panel("#subjects-panel")
+            self.show_subject_subpanel("#subject-add-panel")
+            self.focus_tour_widget("#new-subject-input")
+            return
+
+        if step_id == "websites":
+            self.set_main_tab("settings-tab")
+            self.show_settings_panel("#subjects-panel")
+
+            if len(load_data().get("subjects", [])) == 0:
+                self.show_subject_subpanel("#subject-add-panel")
+                self.focus_tour_widget("#new-subject-input")
+                return
+
+            self.show_subject_subpanel("#subject-edit-panel")
+            self.set_first_subject_if_available("#edit-website-subject-select")
+            self.focus_tour_widget("#edit-website-input")
+            return
+
+        if step_id == "timetable":
+            self.set_main_tab("timetable-tab")
+            self.editing_timetable_index = None
+            self.query_one("#add-timetable-button", Button).label = "Save Session"
+            self.query_one("#timetable-form-panel").display = True
+            self.set_first_subject_if_available("#timetable-subject-select")
+            self.focus_tour_widget("#timetable-day-select")
+            return
+
+        if step_id == "session":
+            self.set_main_tab("log-tab")
+            self.set_first_subject_if_available("#subject-select")
+            self.focus_tour_widget("#minutes-input")
+            return
+
+        if step_id == "focus":
+            self.set_main_tab("focus-tab")
+            self.set_first_subject_if_available("#focus-subject-select")
+            self.focus_tour_widget("#focus-minutes-input")
+            return
+
+        if step_id == "sync":
+            self.set_main_tab("settings-tab")
+            self.show_settings_panel("#sync-panel")
+            self.focus_tour_widget("#sync-now-button")
+            return
+
+        if step_id == "finish":
+            self.set_main_tab("settings-tab")
+            self.show_settings_panel("#tour-panel")
+
+    def tour_step_is_complete(self, step=None, data=None):
+        step = step or self.get_current_tour_step()
+        data = data or load_data()
+        step_id = step["id"]
+
+        if step_id == "subject":
+            return len(data.get("subjects", [])) > 0
+
+        if step_id == "websites":
+            subject_websites = data.get("subject_websites", {})
+            return any(
+                len(clean_website_list(websites)) > 0
+                for websites in subject_websites.values()
+            )
+
+        if step_id == "timetable":
+            return len(data.get("timetable", [])) > 0
+
+        if step_id == "session":
+            return len(data.get("sessions", [])) > 0
+
+        if step_id == "focus":
+            return has_focus_session(data) or len(data.get("focus_quality_sessions", [])) > 0
+
+        if step_id == "sync":
+            return data.get("sync", {}).get("last_cloud_sync") is not None
+
+        return False
+
+    def skip_completed_tour_steps(self):
+        skipped_steps = 0
+
+        while self.tour_step_index < len(SETUP_TOUR_STEPS):
+            step = self.get_current_tour_step()
+
+            if step.get("manual"):
+                break
+
+            if not self.tour_step_is_complete(step):
+                break
+
+            self.tour_step_index += 1
+            skipped_steps += 1
+
+        return skipped_steps
+
+    def update_tour_guide(self):
+        guide = self.query_one("#tour-guide")
+
+        if not self.tour_active:
+            guide.display = False
+            return
+
+        guide.display = True
+        step = self.get_current_tour_step()
+        is_complete = self.tour_step_is_complete(step)
+
+        if is_complete:
+            status = "[green]Done. Press Done to continue.[/green]"
+        elif step.get("optional"):
+            status = "[yellow]Optional. Try it now, or continue when ready.[/yellow]"
+        elif step.get("manual"):
+            status = "[yellow]Read this step, then continue.[/yellow]"
+        else:
+            status = "[yellow]Waiting for this setup action.[/yellow]"
+
+        self.query_one("#tour-guide-text", Static).update(
+            "\n".join([
+                f"[bold]Setup Tour {self.tour_step_index + 1}/{len(SETUP_TOUR_STEPS)}: {step['title']}[/bold]",
+                step["body"],
+                f"[bold]Goal:[/bold] {step['hint']}",
+                status,
+            ])
+        )
+
+        self.query_one("#tour-go-button", Button).label = step["target_label"]
+        self.query_one("#tour-done-button", Button).label = "Finish" if step["id"] == "finish" else "Done"
+        self.query_one("#tour-done-button", Button).disabled = False
+
+    def advance_tour_step(self, auto=False):
+        self.tour_step_index += 1
+        self.skip_completed_tour_steps()
+
+        if self.tour_step_index >= len(SETUP_TOUR_STEPS):
+            self.complete_setup_tour()
+            return
+
+        self.navigate_to_current_tour_step()
+        self.update_tour_guide()
+
+        if auto:
+            step = self.get_current_tour_step()
+            self.show_temp_message(
+                "#global-message",
+                f"[green]Nice. Next: {step['title']}.[/green]",
+            )
+
+    def complete_current_tour_step(self):
+        step = self.get_current_tour_step()
+
+        if step["id"] == "finish":
+            self.complete_setup_tour()
+            return
+
+        if (
+            self.tour_step_is_complete(step)
+            or step.get("manual")
+            or step.get("optional")
+        ):
+            self.advance_tour_step()
+            return
+
+        self.update_tour_guide()
+        self.show_temp_message(
+            "#global-message",
+            f"[yellow]Almost. {step['hint']}[/yellow]",
+        )
+
+    def check_tour_progress(self):
+        if not self.tour_active or self.checking_tour_progress:
+            return
+
+        self.checking_tour_progress = True
+
+        try:
+            step = self.get_current_tour_step()
+
+            if (
+                not step.get("manual")
+                and self.tour_step_is_complete(step)
+            ):
+                self.advance_tour_step(auto=True)
+                return
+
+            self.update_tour_guide()
+        finally:
+            self.checking_tour_progress = False
+
+    def hide_tour_guide(self):
+        self.tour_active = False
+        self.query_one("#tour-guide").display = False
+
+    def start_setup_tour(self):
+        data = load_data()
+        data.setdefault("onboarding", {})
+        data["onboarding"]["tour_declined"] = False
+        save_local_data_without_sync(data)
+        self.tour_active = True
+        self.tour_step_index = 0
+        self.skip_completed_tour_steps()
+        self.navigate_to_current_tour_step()
+        self.update_tour_guide()
+        self.update_tour_panel()
+        self.show_temp_message("#global-message", "[green]Setup tour started.[/green]")
+
+    def dismiss_setup_tour(self):
+        data = load_data()
+        data.setdefault("onboarding", {})
+        data["onboarding"]["tour_declined"] = True
+        save_local_data_without_sync(data)
+        self.hide_tour_guide()
+        self.update_tour_panel()
+
+    def complete_setup_tour(self):
+        data = load_data()
+        data.setdefault("onboarding", {})
+        data["onboarding"]["tour_completed"] = True
+        data["onboarding"]["tour_declined"] = False
+        save_local_data_without_sync(data)
+        self.hide_tour_guide()
+        self.update_tour_panel()
+        self.show_temp_message("#global-message", "[green]Tour complete. You can replay it in Settings > Tour.[/green]")
+
+    def check_for_updates_in_background(self):
+        installed_version = get_installed_version()
+
+        try:
+            latest_version = get_latest_package_version()
+            update_available = version_is_newer(latest_version, installed_version)
+            result = {
+                "last_checked": get_utc_now_text(),
+                "installed_version": installed_version,
+                "latest_version": latest_version,
+                "update_available": update_available,
+                "last_error": None,
+            }
+        except ValueError as error:
+            result = {
+                "last_checked": get_utc_now_text(),
+                "installed_version": installed_version,
+                "latest_version": None,
+                "update_available": False,
+                "last_error": str(error),
+            }
+
+        self.call_from_thread(self.show_update_check_result, result)
+
+    def show_update_check_result(self, result):
+        data = load_data()
+        data["update_check"] = result
+        save_local_data_without_sync(data)
+        self.update_updates_panel()
+
+        if result.get("last_error"):
+            self.show_temp_message("#updates-message", f"[red]{result['last_error']}[/red]")
+        elif result.get("update_available"):
+            self.show_temp_message(
+                "#updates-message",
+                f"[yellow]Update available: {result['latest_version']}[/yellow]",
+            )
+        else:
+            self.show_temp_message("#updates-message", "[green]StudyStreak is up to date.[/green]")
+
+    def export_data_snapshot(self):
+        data = load_data()
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        export_path = get_app_data_dir() / f"studystreak-export-{timestamp}.json"
+
+        with open(export_path, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4)
+
+        self.show_temp_message(
+            "#privacy-message",
+            f"[green]Exported data to {export_path}[/green]",
+            seconds=8,
+        )
+
+    def run_data_privacy_action(self, action_id):
+        data = load_data()
+
+        if action_id == "clear-focus-quality":
+            data["focus_quality_sessions"] = []
+            data["sessions"] = [
+                session for session in data.get("sessions", [])
+                if session.get("source") != "chrome_extension"
+            ]
+            save_local_data_without_sync(data)
+            self.update_dashboard()
+            self.show_temp_message(
+                "#privacy-message",
+                "[yellow]Cleared local browser focus-quality data.[/yellow]",
+            )
+            return
+
+        if action_id == "reset-local-data":
+            fresh_data = get_default_data()
+            fresh_data["appearance_settings"] = data.get("appearance_settings", {})
+            fresh_data["sound_settings"] = data.get("sound_settings", {})
+            fresh_data["notification-settings"] = data.get("notification-settings", {})
+            fresh_data["onboarding"] = {
+                "tour_completed": True,
+                "tour_declined": False,
+            }
+            save_local_data_without_sync(fresh_data)
+            self.update_dashboard()
+            self.show_temp_message(
+                "#privacy-message",
+                "[yellow]Reset local study data for this profile.[/yellow]",
+            )
+            return
+
 
     def stop_session_timers(self):
         #stop background timer when leaving the logged in app
@@ -2127,7 +3010,7 @@ class StudyStreakApp(App):
 
 
 
-    def show_main_app(self):
+    def show_main_app(self, offer_tour=False):
         #show main app after login
         login_container = self.query_one("#login-container")
         main_container = self.query_one("#main-container")
@@ -2159,6 +3042,9 @@ class StudyStreakApp(App):
             )
             if not achievement_unlocked:
                 self.show_streak_effect(streak_count)
+
+        if offer_tour:
+            self.offer_setup_tour_if_needed(force=True)
 
     def refresh_leaderboard(self):
         #refresh server leaderboard
@@ -2215,6 +3101,24 @@ class StudyStreakApp(App):
         
         self.play_ui_sound()
 
+        if event.button.id == "tour-go-button":
+            self.navigate_to_current_tour_step()
+            self.update_tour_guide()
+            return
+
+        if event.button.id == "tour-done-button":
+            self.complete_current_tour_step()
+            return
+
+        if event.button.id == "tour-skip-button":
+            self.advance_tour_step()
+            return
+
+        if event.button.id == "tour-end-button":
+            self.dismiss_setup_tour()
+            self.show_temp_message("#global-message", "[yellow]Tour ended. You can replay it in Settings > Tour.[/yellow]")
+            return
+
         if event.button.id == "logout-button":
             #logout from Textual UI
             login_container = self.query_one("#login-container")
@@ -2230,6 +3134,7 @@ class StudyStreakApp(App):
             clear_remembered_login()
 
             self.logged_in = False
+            self.hide_tour_guide()
 
             username_input.value = ""
             password_input.value = ""
@@ -2398,21 +3303,76 @@ class StudyStreakApp(App):
 
             password_input.value = ""
             self.show_temp_message("#login-message", cloud_message)
-            self.show_main_app()
+            self.show_main_app(offer_tour=True)
             return
 
         settings_panel_by_button = {
             "settings-weekly-button": "#weekly-goal-panel",
             "settings-health-button": "#setup-health-panel",
             "settings-sync-button": "#sync-panel",
+            "settings-tour-button": "#tour-panel",
+            "settings-updates-button": "#updates-panel",
+            "settings-extension-button": "#extension-panel",
             "settings-appearance-button": "#appearance-panel",
             "settings-sounds-button": "#sounds-panel",
             "settings-subjects-button": "#subjects-panel",
+            "settings-privacy-button": "#privacy-panel",
             "settings-focus-import-button": "#focus-import-panel",
         }
 
         if event.button.id in settings_panel_by_button:
             self.show_settings_panel(settings_panel_by_button[event.button.id])
+            return
+
+        if event.button.id == "start-tour-button":
+            self.start_setup_tour()
+            return
+
+        if event.button.id == "mark-tour-complete-button":
+            self.complete_setup_tour()
+            self.show_temp_message("#tour-message", "[green]Tour marked complete.[/green]")
+            return
+
+        if event.button.id == "check-update-button":
+            self.query_one("#updates-message", Static).display = True
+            self.query_one("#updates-message", Static).update("[yellow]Checking PyPI...[/yellow]")
+            self.run_worker(
+                self.check_for_updates_in_background,
+                thread=True,
+                exclusive=True,
+                group="update-check",
+            )
+            return
+
+        if event.button.id == "open-extension-guide-button":
+            webbrowser.open("https://github.com/Chi-ChunL/StudyStreak#browser-extension")
+            self.show_temp_message("#extension-message", "[green]Opened extension guide.[/green]")
+            return
+
+        if event.button.id == "export-data-button":
+            self.export_data_snapshot()
+            return
+
+        if event.button.id == "clear-focus-quality-data-button":
+            self.push_screen(
+                DataActionConfirmScreen(
+                    "clear-focus-quality",
+                    "Clear browser focus data?",
+                    "This removes local Chrome/Firefox focus-quality summaries and synced browser focus sessions from this profile.",
+                    "Clear Data",
+                )
+            )
+            return
+
+        if event.button.id == "reset-local-data-button":
+            self.push_screen(
+                DataActionConfirmScreen(
+                    "reset-local-data",
+                    "Reset local study data?",
+                    "This clears study sessions, subjects, timetable, focus summaries, and achievements for this local profile. It does not directly delete cloud data.",
+                    "Reset Local Data",
+                )
+            )
             return
 
         if event.button.id == "settings-weekly-button":

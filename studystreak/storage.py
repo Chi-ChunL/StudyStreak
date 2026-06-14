@@ -63,6 +63,17 @@ def get_default_data():
         "appearance_settings": {
             "theme": "dark",
         },
+        "onboarding": {
+            "tour_completed": False,
+            "tour_declined": False,
+        },
+        "update_check": {
+            "last_checked": None,
+            "installed_version": None,
+            "latest_version": None,
+            "update_available": False,
+            "last_error": None,
+        },
         "achievements": {
             "unlocked": [],
         },
@@ -257,9 +268,36 @@ def repair_data(data):
 
     if "appearance_settings" not in data:
         data["appearance_settings"] = {}
-
+    
     if "theme" not in data["appearance_settings"]:
         data["appearance_settings"]["theme"] = "dark"
+
+    if "onboarding" not in data:
+        data["onboarding"] = {}
+
+    if "tour_completed" not in data["onboarding"]:
+        data["onboarding"]["tour_completed"] = False
+
+    if "tour_declined" not in data["onboarding"]:
+        data["onboarding"]["tour_declined"] = False
+
+    if "update_check" not in data:
+        data["update_check"] = {}
+
+    if "last_checked" not in data["update_check"]:
+        data["update_check"]["last_checked"] = None
+
+    if "installed_version" not in data["update_check"]:
+        data["update_check"]["installed_version"] = None
+
+    if "latest_version" not in data["update_check"]:
+        data["update_check"]["latest_version"] = None
+
+    if "update_available" not in data["update_check"]:
+        data["update_check"]["update_available"] = False
+
+    if "last_error" not in data["update_check"]:
+        data["update_check"]["last_error"] = None
 
     if data["appearance_settings"]["theme"] not in ["dark", "light"]:
         data["appearance_settings"]["theme"] = "dark"
@@ -324,6 +362,16 @@ def save_data(data):
     if is_logged_in():
         save_session_data(data)
         sync_profile_data_in_background(data)
+        return
+
+    save_legacy_data(data)
+
+def save_local_data_without_sync(data):
+    #save local data without starting a cloud sync worker
+    data = repair_data(data)
+
+    if is_logged_in():
+        save_session_data(data)
         return
 
     save_legacy_data(data)
@@ -642,14 +690,25 @@ def sync_profile_data(data):
     try:
         username = get_session_username()
         password = get_session_password()
-
         encrypted_profile_data = encrypt_profile_data(data, username, password)
-        upload_profile_data(token, encrypted_profile_data)
         current_streak = calculate_streak_days(data.get("streak_days", []))
-        upload_streak(token, current_streak)
-        upload_subjects(token, data.get("subjects", []))
-        upload_subject_websites(token, data.get("subject_websites", {}))
-        upload_timetable(token, data.get("timetable", []))
+
+        sync_steps = [
+            ("Profile upload", lambda: upload_profile_data(token, encrypted_profile_data)),
+            ("Streak upload", lambda: upload_streak(token, current_streak)),
+            ("Subject upload", lambda: upload_subjects(token, data.get("subjects", []))),
+            (
+                "Subject website upload",
+                lambda: upload_subject_websites(token, data.get("subject_websites", {})),
+            ),
+            ("Timetable upload", lambda: upload_timetable(token, data.get("timetable", []))),
+        ]
+
+        for step_name, sync_step in sync_steps:
+            try:
+                sync_step()
+            except Exception as error:
+                raise ValueError(f"{step_name}: {error}") from error
 
     except Exception as error:
         update_sync_result_if_current(
