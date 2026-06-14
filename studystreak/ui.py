@@ -915,6 +915,7 @@ class AchievementEffectScreen(ModalScreen):
             )
     
     def on_mount(self):
+        self.set_timer(0.35, self.app.play_achievement_sound)
         self.set_timer(3, self.close_effect)
 
     def close_effect(self):
@@ -1002,81 +1003,6 @@ class SetupTourPromptScreen(ModalScreen):
 
         if event.button.id == "skip-setup-tour-button":
             self.app.dismiss_setup_tour()
-            self.app.pop_screen()
-            return
-
-
-class SetupTourScreen(ModalScreen):
-    steps = [
-        (
-            "Dashboard",
-            "The dashboard shows your current streak, studied minutes, weekly goal progress, setup checklist, and recent sessions.",
-        ),
-        (
-            "Subjects",
-            "Add subjects in Settings > Subjects. Save the websites you use for each subject so Focus Mode and the extension can auto-fill them.",
-        ),
-        (
-            "Log Session",
-            "Use Log Session for quick manual study blocks. The first study block of a day protects your streak.",
-        ),
-        (
-            "Timetable",
-            "Plan weekly sessions in Timetable. The browser extension can remind you when today's planned sessions start.",
-        ),
-        (
-            "Focus Mode",
-            "Use Focus Mode for timed study. Pomodoro 50/10 logs completed work blocks automatically.",
-        ),
-        (
-            "Browser Extension",
-            "The extension tracks focus quality, shows an overlay timer, syncs subjects/websites, and can enable Strict Focus.",
-        ),
-        (
-            "Settings",
-            "Use Sync, Updates, Extension, and Data & Privacy to keep StudyStreak healthy and understandable.",
-        ),
-    ]
-
-    def __init__(self, step_index=0):
-        super().__init__()
-        self.step_index = step_index
-
-    def compose(self) -> ComposeResult:
-        title, message = self.steps[self.step_index]
-
-        with Container(id="setup-tour-box"):
-            yield Static(
-                f"[bold]{self.step_index + 1}/{len(self.steps)} - {title}[/bold]",
-                id="setup-tour-title",
-            )
-            yield Static(message, id="setup-tour-message")
-            with Horizontal(id="setup-tour-buttons"):
-                yield Button("Back", id="tour-back-button", disabled=self.step_index == 0)
-                yield Button(
-                    "Finish" if self.step_index == len(self.steps) - 1 else "Next",
-                    id="tour-next-button",
-                )
-                yield Button("Close", id="tour-close-button")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "tour-back-button":
-            if self.step_index > 0:
-                self.step_index -= 1
-                self.refresh(recompose=True)
-            return
-
-        if event.button.id == "tour-next-button":
-            if self.step_index >= len(self.steps) - 1:
-                self.app.complete_setup_tour()
-                self.app.pop_screen()
-                return
-
-            self.step_index += 1
-            self.refresh(recompose=True)
-            return
-
-        if event.button.id == "tour-close-button":
             self.app.pop_screen()
             return
 
@@ -1391,10 +1317,12 @@ class StudyStreakApp(App):
                                 yield Static("Data & privacy", id="privacy-panel-title")
                                 yield Static("", id="privacy-details")
 
-                                with Horizontal(id="privacy-button-row"):
-                                    yield Button("Export Data", id="export-data-button")
-                                    yield Button("Clear Focus Quality", id="clear-focus-quality-data-button")
-                                    yield Button("Reset Local Study Data", id="reset-local-data-button")
+                                with Vertical(id="privacy-button-stack"):
+                                    with Horizontal(id="privacy-button-row"):
+                                        yield Button("Export Data", id="export-data-button")
+                                        yield Button("Clear Focus Quality", id="clear-focus-quality-data-button")
+                                    with Horizontal(id="privacy-danger-button-row"):
+                                        yield Button("Reset Local Study Data", id="reset-local-data-button")
 
                                 yield Static("", id="privacy-message")
 
@@ -1956,6 +1884,13 @@ class StudyStreakApp(App):
             group="sound-effects",
         )
 
+    def play_achievement_sound(self):
+        if not self.sound_is_enabled("achievement"):
+            return
+
+        # The achievement modal owns this sound so every queued popup plays it.
+        play_sound("achievement", wait=True)
+
     def play_ui_sound(self):
         if not self.sound_is_enabled("ui"):
             return
@@ -2018,7 +1953,6 @@ class StudyStreakApp(App):
         current_achievement = achievements[0]
         remaining_achievements = achievements[1:]
 
-        self.play_app_sound("achievement")
         self.notify_achievement_unlocked(current_achievement)
 
         self.push_screen(
@@ -2053,7 +1987,6 @@ class StudyStreakApp(App):
 
     def action_escape_quit(self):
         current_time = datetime.now()
-        global_message = self.query_one("#global-message", Static)
  
         if self.last_escape_time is None:
             self.last_escape_time = current_time
@@ -2073,14 +2006,12 @@ class StudyStreakApp(App):
             self.play_streak_protected()
             self.push_screen(StreakEffectScreen(streak_count))
         else:
-            global_message = self.query_one("#global-message", Static)
             self.show_temp_message("#global-message", "[green]Your study session has been logged.[/green]")
  
     def delete_subject_and_sessions(self, subject):
         data = load_data()
  
         if subject not in data["subjects"]:
-            delete_subject_message = self.query_one("#delete-subject-message", Static)
             self.show_temp_message("#delete-subject-message", "[red]That subject could not be found.[/red]")
             self.update_dashboard()
             return
@@ -2107,8 +2038,6 @@ class StudyStreakApp(App):
 
         save_data(data)
         self.update_dashboard()
- 
-        delete_subject_message = self.query_one("#delete-subject-message", Static)
  
         self.show_temp_message(
             "#delete-subject-message",
@@ -2393,7 +2322,6 @@ class StudyStreakApp(App):
     def try_remembered_login(self):
         #try auto login from remembered account
         username_input = self.query_one("#login-username-input", Input)
-        login_message = self.query_one("#login-message", Static)
 
         remembered_username = get_remembered_username()
 
@@ -3125,7 +3053,6 @@ class StudyStreakApp(App):
             main_container = self.query_one("#main-container")
             username_input = self.query_one("#login-username-input", Input)
             password_input = self.query_one("#login-password-input", Input)
-            login_message = self.query_one("#login-message", Static)
 
 
             self.stop_session_timers()
@@ -3239,7 +3166,6 @@ class StudyStreakApp(App):
         if event.button.id == "create-account-button":
             username_input = self.query_one("#login-username-input", Input)
             password_input = self.query_one("#login-password-input", Input)
-            login_message = self.query_one("#login-message", Static)
 
             username = username_input.value.strip()
             password = password_input.value
@@ -3375,101 +3301,6 @@ class StudyStreakApp(App):
             )
             return
 
-        if event.button.id == "settings-weekly-button":
-            weekly_goal_panel = self.query_one("#weekly-goal-panel")
-            subjects_panel = self.query_one("#subjects-panel")
-            sync_panel = self.query_one("#sync-panel")
-            sounds_panel = self.query_one("#sounds-panel")
-            appearance_panel = self.query_one("#appearance-panel")
-            focus_import_panel = self.query_one("#focus-import-panel")
-
-            appearance_panel.display = False
-            sounds_panel.display = False
-            weekly_goal_panel.display = True
-            subjects_panel.display = False
-            sync_panel.display = False
-            focus_import_panel.display = False
-            return
-
-        if event.button.id == "settings-sync-button":
-            weekly_goal_panel = self.query_one("#weekly-goal-panel")
-            subjects_panel = self.query_one("#subjects-panel")
-            sync_panel = self.query_one("#sync-panel")
-            sounds_panel = self.query_one("#sounds-panel")
-            appearance_panel = self.query_one("#appearance-panel")
-            focus_import_panel = self.query_one("#focus-import-panel")
-
-            appearance_panel.display = False
-            sounds_panel.display = False
-            weekly_goal_panel.display = False
-            subjects_panel.display = False
-            sync_panel.display = True
-            focus_import_panel.display = False
-            self.update_sync_status()
-            return 
-
-        if event.button.id == "settings-appearance-button":
-            weekly_goal_panel = self.query_one("#weekly-goal-panel")
-            sync_panel = self.query_one("#sync-panel")
-            sounds_panel = self.query_one("#sounds-panel")
-            subjects_panel = self.query_one("#subjects-panel")
-            appearance_panel = self.query_one("#appearance-panel")
-            focus_import_panel = self.query_one("#focus-import-panel")
-
-            weekly_goal_panel.display = False
-            sync_panel.display = False
-            sounds_panel.display = False
-            subjects_panel.display = False
-            appearance_panel.display = True
-            focus_import_panel.display = False
-
-            self.update_appearance_settings_panel()
-            return
-        
-        if event.button.id == "settings-sounds-button":
-            weekly_goal_panel = self.query_one("#weekly-goal-panel")
-            sync_panel = self.query_one("#sync-panel")
-            sounds_panel = self.query_one("#sounds-panel")
-            subjects_panel = self.query_one("#subjects-panel")
-            appearance_panel = self.query_one("#appearance-panel")
-            focus_import_panel = self.query_one("#focus-import-panel")
-
-            weekly_goal_panel.display = False
-            sync_panel.display = False
-            sounds_panel.display = True
-            subjects_panel.display = False
-            appearance_panel.display = False
-            focus_import_panel.display = False
-
-            self.update_sound_settings_panel()
-            return
-
-
-        if event.button.id == "settings-subjects-button":
-            weekly_goal_panel = self.query_one("#weekly-goal-panel")
-            subjects_panel = self.query_one("#subjects-panel")
-            sync_panel = self.query_one("#sync-panel")
-            sounds_panel = self.query_one("#sounds-panel")
-            appearance_panel = self.query_one("#appearance-panel")
-            focus_import_panel = self.query_one("#focus-import-panel")
-
-
-            subject_add_panel = self.query_one("#subject-add-panel")
-            subject_edit_panel = self.query_one("#subject-edit-panel")
-            subject_delete_panel = self.query_one("#subject-delete-panel")
- 
-            weekly_goal_panel.display = False
-            subjects_panel.display = True
-            sync_panel.display = False
-            sounds_panel.display = False
-            appearance_panel.display = False
-            focus_import_panel.display = False
-
-            subject_add_panel.display = True
-            subject_edit_panel.display = False
-            subject_delete_panel.display = False
-            return
-
         if event.button.id == "sync-now-button":
             try:
                 subject_sync_result = self.sync_subject_websites_from_server()
@@ -3578,7 +3409,6 @@ class StudyStreakApp(App):
  
         if event.button.id == "delete-selected-button":
             session_select = self.query_one("#session-select", Select)
-            manage_message = self.query_one("#manage-message", Static)
  
             selected_index = session_select.value
             data = load_data()
@@ -3616,7 +3446,6 @@ class StudyStreakApp(App):
  
         if event.button.id == "save-goal-button":
             goal_input = self.query_one("#weekly-goal-input", Input)
-            settings_message = self.query_one("#settings-message", Static)
  
             goal_text = goal_input.value.strip()
  
@@ -3651,7 +3480,6 @@ class StudyStreakApp(App):
         if event.button.id == "add-subject-button":
             new_subject_input = self.query_one("#new-subject-input", Input)
             new_subject_website_input = self.query_one("#new-subject-website-input", TextArea)
-            subject_message = self.query_one("#subject-message", Static)
  
             new_subject = new_subject_input.value.strip().lower()
             websites = clean_website_list(new_subject_website_input.text)
@@ -3691,7 +3519,6 @@ class StudyStreakApp(App):
         if event.button.id == "update-website-button":
             edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
             edit_website_input = self.query_one("#edit-website-input", TextArea)
-            edit_website_message = self.query_one("#edit-website-message", Static)
  
             selected_subject = edit_website_subject_select.value
             websites = clean_website_list(edit_website_input.text)
@@ -3727,7 +3554,6 @@ class StudyStreakApp(App):
  
         if event.button.id == "delete-subject-button":
             delete_subject_select = self.query_one("#delete-subject-select", Select)
-            delete_subject_message = self.query_one("#delete-subject-message", Static)
  
             selected_subject = delete_subject_select.value
  
@@ -4022,7 +3848,6 @@ class StudyStreakApp(App):
             focus_subject_select = self.query_one("#focus-subject-select", Select)
             focus_minutes_input = self.query_one("#focus-minutes-input", Input)
             pomodoro_checkbox = self.query_one("#pomodoro-mode-checkbox", Checkbox)
-            focus_message = self.query_one("#focus-message", Static)
  
             subject = focus_subject_select.value
             minutes_text = focus_minutes_input.value.strip()

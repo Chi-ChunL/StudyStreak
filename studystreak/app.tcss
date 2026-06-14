@@ -679,10 +679,16 @@ TabPane {
 #tour-button-row,
 #updates-button-row,
 #extension-button-row,
-#privacy-button-row {
+#privacy-button-row,
+#privacy-danger-button-row {
     height: auto;
     align: center middle;
     margin-top: 1;
+}
+
+#privacy-button-stack {
+    width: 100%;
+    height: auto;
 }
 
 #sync-now-button,
@@ -697,6 +703,18 @@ TabPane {
     color: #e0e0e0;
     border: tall #777777;
     margin: 0 1;
+}
+
+#export-data-button {
+    width: 18;
+}
+
+#clear-focus-quality-data-button {
+    width: 26;
+}
+
+#reset-local-data-button {
+    width: 30;
 }
 
 #sync-now-button:hover,
@@ -890,7 +908,6 @@ TabPane {
 }
 
 #setup-tour-prompt-box,
-#setup-tour-box,
 #data-action-confirm-box {
     width: 70;
     height: auto;
@@ -901,14 +918,12 @@ TabPane {
 }
 
 #setup-tour-prompt-title,
-#setup-tour-title,
 #data-action-confirm-title {
     text-align: center;
     margin-bottom: 1;
 }
 
 #setup-tour-prompt-message,
-#setup-tour-message,
 #data-action-confirm-message {
     text-align: center;
     color: #cfcfcf;
@@ -916,7 +931,6 @@ TabPane {
 }
 
 #setup-tour-prompt-buttons,
-#setup-tour-buttons,
 #data-action-confirm-buttons {
     height: auto;
     align: center middle;
@@ -925,9 +939,6 @@ TabPane {
 
 #start-setup-tour-button,
 #skip-setup-tour-button,
-#tour-back-button,
-#tour-next-button,
-#tour-close-button,
 #cancel-data-action-button,
 #confirm-data-action-button {
     background: #2a2a2a;
@@ -938,9 +949,6 @@ TabPane {
 
 #start-setup-tour-button:hover,
 #skip-setup-tour-button:hover,
-#tour-back-button:hover,
-#tour-next-button:hover,
-#tour-close-button:hover,
 #cancel-data-action-button:hover,
 #confirm-data-action-button:hover {
     background: #3a3a3a;

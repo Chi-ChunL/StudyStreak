@@ -1,18 +1,18 @@
 import sys
 from pathlib import Path
 
-SOUND_DIR =     Path(__file__).resolve().parent / "assets"  / "sounds"
+SOUND_DIR = Path(__file__).resolve().parent / "assets" / "sounds"
 
 SOUND_FILES = {
     "ui": SOUND_DIR / "ui.wav",
     "focus_complete": SOUND_DIR / "focus_complete.wav",
     "streak_protected": SOUND_DIR / "streak_protected.wav",
-    "achievement": SOUND_DIR / "achievement.wav"
+    "achievement": SOUND_DIR / "achievement.wav",
 }
 
 
-def play_sound(sound_name):
-    #play a simple completetion sound
+def play_sound(sound_name, wait=False):
+    # Play a short app sound; use wait=True when the sound must not be interrupted.
     sound_file = SOUND_FILES.get(sound_name)
 
     if sound_file is None:
@@ -20,16 +20,20 @@ def play_sound(sound_name):
     
     if not sound_file.exists():
         return
-    
-
 
     if sys.platform.startswith("win"):
         try:
             import winsound
 
+            flags = winsound.SND_FILENAME
+
+            if not wait:
+                flags = flags | winsound.SND_ASYNC
+
+            winsound.PlaySound(None, 0)
             winsound.PlaySound(
                 str(sound_file),
-                winsound.SND_FILENAME | winsound.SND_ASYNC,
+                flags,
             )
             
             return
