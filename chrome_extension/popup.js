@@ -155,20 +155,22 @@ function renderTodaySessions(settings = currentSettings) {
         return;
     }
 
-    todaySessions.innerHTML = sessions
-        .map((session) => {
-            const subject = session.subject || "unknown";
-            const startTime = session.start_time || "--:--";
-            const minutes = Number(session.minutes) || 0;
+    todaySessions.replaceChildren();
 
-            return `
-                <div class="today-session-item">
-                    <strong>${subject}</strong>
-                    <span>${startTime} - ${minutes} min</span>
-                </div>
-            `;
-        })
-        .join("");
+    sessions.forEach((session) => {
+        const item = document.createElement("div");
+        const subject = document.createElement("strong");
+        const details = document.createElement("span");
+        const startTime = session.start_time || "--:--";
+        const minutes = Number(session.minutes) || 0;
+
+        item.className = "today-session-item";
+        subject.textContent = session.subject || "unknown";
+        details.textContent = `${startTime} - ${minutes} min`;
+
+        item.append(subject, details);
+        todaySessions.append(item);
+    });
 }
 
 
@@ -193,18 +195,24 @@ function renderFocusHistory(history) {
         return;
     }
 
-    focusHistory.innerHTML = recentHistory
-        .map((session) => {
-            return `
-                <div class="history-item">
-                    <span>Subject: ${session.subject || "unknown"}</span>
-                    <strong>${session.score}%</strong>
-                    <span>${formatSeconds(session.focusedSeconds)} focused</span>
-                    <span>Top distraction: ${session.topDistractedDomain || "none"}</span>
-                </div>
-            `;
-        })
-        .join("");
+    focusHistory.replaceChildren();
+
+    recentHistory.forEach((session) => {
+        const item = document.createElement("div");
+        const subject = document.createElement("span");
+        const score = document.createElement("strong");
+        const focused = document.createElement("span");
+        const topDistraction = document.createElement("span");
+
+        item.className = "history-item";
+        subject.textContent = `Subject: ${session.subject || "unknown"}`;
+        score.textContent = `${session.score}%`;
+        focused.textContent = `${formatSeconds(session.focusedSeconds)} focused`;
+        topDistraction.textContent = `Top distraction: ${session.topDistractedDomain || "none"}`;
+
+        item.append(subject, score, focused, topDistraction);
+        focusHistory.append(item);
+    });
 }
 
 function getSyncedSubjects(settings = currentSettings) {
@@ -220,7 +228,7 @@ function renderSubjectOptions(subjects, selectedSubject = "") {
     const cleanSelectedSubject = String(
         selectedSubject || currentSettings.selectedFocusSubject || currentSettings.focusSubject || ""
     ).trim().toLowerCase();
-    focusSubject.innerHTML = "";
+    focusSubject.replaceChildren();
 
     if (safeSubjects.length === 0) {
         const emptyOption = document.createElement("option");
