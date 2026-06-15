@@ -171,36 +171,6 @@ Then:
 
 Temporary add-ons disappear after restarting Firefox or Zen.
 
-### Firefox or Zen Permanent Install Without Public Store Listing
-
-Normal Firefox and Zen do not permanently keep unsigned temporary extensions. The practical permanent option without a public Add-ons Store listing is Mozilla self-distribution, also called an unlisted signed add-on.
-
-This still uses Mozilla Add-ons Developer Hub for signing, but the extension is not publicly listed on the store.
-
-Build and zip the Firefox extension:
-
-```powershell
-python scripts\build_firefox_extension.py
-Compress-Archive -Path dist\firefox_extension\* -DestinationPath dist\studystreak-firefox.zip -Force
-```
-
-Then:
-
-1. Go to the Mozilla Add-ons Developer Hub.
-2. Submit a new add-on.
-3. Choose the option to distribute it on your own, not as a public AMO listing.
-4. Upload `dist/studystreak-firefox.zip`.
-5. Download the signed `.xpi`.
-6. Open `about:addons` in Firefox or Zen.
-7. Use the settings menu and choose Install Add-on From File.
-8. Select the signed `.xpi`.
-
-Useful Mozilla docs:
-
-- [Signing and distribution overview](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)
-- [Submitting an add-on](https://extensionworkshop.com/documentation/publish/submitting-an-add-on/)
-- [Self-distribution](https://extensionworkshop.com/documentation/publish/self-distribution/)
-
 ## Using the Extension
 
 1. Log in with the same StudyStreak account as the terminal app.
