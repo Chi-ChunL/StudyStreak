@@ -14,7 +14,8 @@
                     <button class="side-tab-button active" data-tab="account">Account</button>
                     <button class="side-tab-button" data-tab="reminder" disabled>Reminder</button>
                     <button class="side-tab-button" data-tab="focus" disabled>Focus</button>
-                    <button class="side-tab-button" data-tab="export" disabled>Export</button>
+                    <button class="side-tab-button" data-tab="todo" disabled>Todo</button>
+                    <button class="side-tab-button" data-tab="settings" disabled>Settings</button>
                 </nav>
 
                 <div class="tab-content">
@@ -87,8 +88,30 @@
                         <p id="focus-domain"></p>
                     </section>
 
-                    <section class="tab-panel" data-panel="export" hidden>
-                        <h2>Export</h2>
+                    <section class="tab-panel" data-panel="todo" hidden>
+                        <h2>Todo list</h2>
+
+                        <div class="todo-editor">
+                            <label>
+                                New task
+                                <input id="new-todo-input" type="text" maxlength="120" placeholder="e.g. Finish question 4">
+                            </label>
+                            <button id="add-todo-button">Add Task</button>
+                        </div>
+
+                        <div id="todo-list" class="todo-list"></div>
+                        <button id="clear-completed-todos-button">Clear Completed</button>
+                    </section>
+
+                    <section class="tab-panel" data-panel="settings" hidden>
+                        <h2>Settings</h2>
+
+                        <label class="row settings-row">
+                            <input id="todo-overlay-enabled" type="checkbox">
+                            Show todo overlay
+                        </label>
+
+                        <h3>Offline import fallback</h3>
 
                         <p id="last-focus-summary"></p>
                         <button id="copy-summary-button" disabled>Copy Summary</button>

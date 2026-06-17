@@ -283,6 +283,51 @@ def get_subject_websites(token: str) -> dict[str, list[str]]:
     return subject_websites
 
 
+def upload_todo_items(token: str, todo_items: list[dict]) -> None:
+    try:
+        response = requests.put(
+            f"{BASE_URL}/todo-items",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "todo_items": todo_items,
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Todo sync", response)
+
+
+def get_todo_items(token: str) -> list[dict]:
+    try:
+        response = requests.get(
+            f"{BASE_URL}/todo-items",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Todo load", response)
+
+    data = response.json()
+    todo_items = data.get("todo_items", [])
+
+    if not isinstance(todo_items, list):
+        return []
+
+    return todo_items
+
+
 def upload_timetable(token: str, timetable: list[dict]) -> None:
     #upload timetable list for Chrome extension reminders
     try:

@@ -16,6 +16,29 @@ const DEFAULT_STATS = {
     distractedDomains: {}
 };
 
+function cleanTodoItems(items) {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .map((item, index) => {
+            const text = String(item?.text || "").trim();
+
+            if (!text) {
+                return null;
+            }
+
+            return {
+                id: String(item?.id || `todo-${Date.now()}-${index}`),
+                text: text.slice(0, 120),
+                done: Boolean(item?.done)
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 50);
+}
+
 const DEFAULT_SETTINGS = {
     remindersEnabled: true,
     allowedDomains: ["pearsonactivelearn.com", "quizlet.com", "senecalearning.com"],
@@ -38,6 +61,10 @@ const DEFAULT_SETTINGS = {
     pomodoroPhaseStartedAt: null,
     pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
     pomodoroWorkBlocksCompleted: 0,
+    todoOverlayEnabled: true,
+    todoItems: [],
+    focusOverlayPosition: null,
+    todoOverlayPosition: null,
 };
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
@@ -86,6 +113,28 @@ async function getSettings() {
         pomodoroPhaseStartedAt: Number(saved.pomodoroPhaseStartedAt) || null,
         pomodoroPhaseDurationSeconds: Number(saved.pomodoroPhaseDurationSeconds) || POMODORO_WORK_SECONDS,
         pomodoroWorkBlocksCompleted: Number(saved.pomodoroWorkBlocksCompleted) || 0,
+        todoOverlayEnabled: saved.todoOverlayEnabled !== false,
+        todoItems: cleanTodoItems(saved.todoItems),
+        focusOverlayPosition: (
+            saved.focusOverlayPosition &&
+            Number.isFinite(Number(saved.focusOverlayPosition.left)) &&
+            Number.isFinite(Number(saved.focusOverlayPosition.top))
+        )
+            ? {
+                left: Number(saved.focusOverlayPosition.left),
+                top: Number(saved.focusOverlayPosition.top)
+            }
+            : null,
+        todoOverlayPosition: (
+            saved.todoOverlayPosition &&
+            Number.isFinite(Number(saved.todoOverlayPosition.left)) &&
+            Number.isFinite(Number(saved.todoOverlayPosition.top))
+        )
+            ? {
+                left: Number(saved.todoOverlayPosition.left),
+                top: Number(saved.todoOverlayPosition.top)
+            }
+            : null,
     };
 }
 
@@ -198,6 +247,22 @@ async function fetchSubjectWebsitesFromServer(token) {
     return cleanSubjectWebsiteMap(data.subject_websites);
 }
 
+async function fetchTodoItemsFromServer(token) {
+    const response = await fetch(`${API_BASE_URL}/todo-items`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return cleanTodoItems(data.todo_items);
+}
+
 async function uploadSubjectWebsitesToServer(token, subjectWebsites) {
     const response = await fetch(`${API_BASE_URL}/subject-websites`, {
         method: "PUT",
@@ -207,6 +272,27 @@ async function uploadSubjectWebsitesToServer(token, subjectWebsites) {
         },
         body: JSON.stringify({
             subject_websites: cleanSubjectWebsiteMap(subjectWebsites)
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return data;
+}
+
+async function uploadTodoItemsToServer(token, todoItems) {
+    const response = await fetch(`${API_BASE_URL}/todo-items`, {
+        method: "PUT",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            todo_items: cleanTodoItems(todoItems)
         })
     });
 
@@ -257,6 +343,7 @@ async function refreshSubjectsFromServer() {
     const subjects = await fetchSubjectsFromServer(settings.serverToken);
     const subjectWebsites = await fetchSubjectWebsitesFromServer(settings.serverToken);
     const timetable = await fetchTimetableFromServer(settings.serverToken);
+    const todoItems = await fetchTodoItemsFromServer(settings.serverToken);
     const selectedFocusSubject = getSelectedSubjectForList(
         subjects,
         settings.selectedFocusSubject || settings.focusSubject
@@ -266,15 +353,18 @@ async function refreshSubjectsFromServer() {
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
         syncedTimetable: timetable,
+        todoItems,
         selectedFocusSubject
     });
     await scheduleTimetableReminders(timetable);
+    await injectFocusOverlayIntoOpenTabs();
 
     return {
         ok: true,
         subjects,
         subjectWebsites,
         timetable,
+        todoItems,
         selectedFocusSubject
     };
 }
@@ -487,6 +577,7 @@ async function loginToServer(username, password) {
     let subjects = [];
     let subjectWebsites = {};
     let timetable = [];
+    let todoItems = [];
 
     try {
         subjects = await fetchSubjectsFromServer(data.access_token);
@@ -506,12 +597,29 @@ async function loginToServer(username, password) {
         timetable = [];
     }
 
+    try {
+        todoItems = await fetchTodoItemsFromServer(data.access_token);
+    } catch {
+        todoItems = [];
+    }
+
     const selectedFocusSubject = sameAccount
         ? getSelectedSubjectForList(
             subjects,
             previousSettings.selectedFocusSubject || previousSettings.focusSubject
         )
         : "";
+    const storedTodoItems = sameAccount
+        ? cleanTodoItems(todoItems.length > 0 ? todoItems : previousSettings.todoItems)
+        : cleanTodoItems(todoItems);
+
+    if (sameAccount && todoItems.length === 0 && storedTodoItems.length > 0) {
+        try {
+            await uploadTodoItemsToServer(data.access_token, storedTodoItems);
+        } catch {
+            // Keep local todo items even if the first cloud upload cannot complete.
+        }
+    }
 
     if (!sameAccount) {
         await chrome.alarms.clear(FOCUS_TICK_ALARM);
@@ -524,6 +632,7 @@ async function loginToServer(username, password) {
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
         syncedTimetable: timetable,
+        todoItems: storedTodoItems,
         selectedFocusSubject,
         focusActive: sameAccount ? previousSettings.focusActive : false,
         focusSubject: sameAccount && previousSettings.focusActive
@@ -546,9 +655,13 @@ async function loginToServer(username, password) {
             : POMODORO_WORK_SECONDS,
         pomodoroWorkBlocksCompleted: sameAccount
             ? previousSettings.pomodoroWorkBlocksCompleted
-            : 0
+            : 0,
+        todoOverlayEnabled: previousSettings.todoOverlayEnabled,
+        focusOverlayPosition: previousSettings.focusOverlayPosition,
+        todoOverlayPosition: previousSettings.todoOverlayPosition
     });
     await scheduleTimetableReminders(timetable);
+    await injectFocusOverlayIntoOpenTabs();
 
     return {
         ok: true,
@@ -556,6 +669,7 @@ async function loginToServer(username, password) {
         subjects,
         subjectWebsites,
         timetable,
+        todoItems: storedTodoItems,
         selectedFocusSubject
     };
 }
@@ -580,6 +694,7 @@ async function logoutFromServer() {
         pomodoroPhaseStartedAt: null,
         pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
         pomodoroWorkBlocksCompleted: 0,
+        todoItems: [],
         syncedSubjects: [],
         syncedSubjectWebsites: {},
         syncedTimetable: []
@@ -1199,9 +1314,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (message.type === "saveSettings") {
-            await chrome.storage.local.set(message.settings);
+            const nextSettings = { ...(message.settings || {}) };
+            const shouldRefreshOverlays = (
+                Object.prototype.hasOwnProperty.call(nextSettings, "todoItems") ||
+                Object.prototype.hasOwnProperty.call(nextSettings, "todoOverlayEnabled")
+            );
+
+            if (Object.prototype.hasOwnProperty.call(nextSettings, "todoItems")) {
+                nextSettings.todoItems = cleanTodoItems(nextSettings.todoItems);
+            }
+
+            if (Object.prototype.hasOwnProperty.call(nextSettings, "todoOverlayEnabled")) {
+                nextSettings.todoOverlayEnabled = nextSettings.todoOverlayEnabled !== false;
+            }
+
+            await chrome.storage.local.set(nextSettings);
             await scheduleDailyReminder();
             await scheduleTimetableReminders();
+
+            if (shouldRefreshOverlays) {
+                await injectFocusOverlayIntoOpenTabs();
+            }
+
+            return { ok: true };
+        }
+
+        if (message.type === "saveTodoItems") {
+            const settings = await getSettings();
+            const todoItems = cleanTodoItems(message.todoItems);
+
+            await chrome.storage.local.set({
+                todoItems
+            });
+
+            if (settings.serverToken) {
+                await uploadTodoItemsToServer(settings.serverToken, todoItems);
+            }
+
+            await injectFocusOverlayIntoOpenTabs();
+            return { ok: true };
+        }
+
+        if (message.type === "setTodoOverlayEnabled") {
+            await chrome.storage.local.set({
+                todoOverlayEnabled: message.enabled !== false
+            });
+            await injectFocusOverlayIntoOpenTabs();
             return { ok: true };
         }
 

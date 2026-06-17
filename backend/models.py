@@ -19,6 +19,7 @@ class User(Base):
     subjects_json = Column(String, nullable=True)
     subject_websites_json = Column(String, nullable=True)
     timetable_json = Column(String, nullable=True)
+    todo_items_json = Column(String, nullable=True)
     current_streak = Column(Integer, default=0, nullable=False)
 
     focus_sessions = relationship(

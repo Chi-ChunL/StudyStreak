@@ -23,6 +23,7 @@ from backend.schemas import(
     UserLogin,
     SubjectList,
     SubjectWebsiteList,
+    TodoItemList,
     TimetableList,
     FocusQualitySessionCreate,
     FocusQualitySessionResponse,
@@ -56,6 +57,12 @@ with engine.connect() as connection:
     if "timetable_json" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN timetable_json TEXT")
+        )
+        connection.commit()
+
+    if "todo_items_json" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN todo_items_json TEXT")
         )
         connection.commit()
     
@@ -270,6 +277,44 @@ def clean_subject_websites(subject_websites: dict[str, list[str]]) -> dict[str, 
 
     return cleaned
 
+def clean_todo_items(todo_items: list[dict]) -> list[dict]:
+    cleaned = []
+    seen_ids = set()
+
+    if not isinstance(todo_items, list):
+        return cleaned
+
+    for index, item in enumerate(todo_items):
+        if not isinstance(item, dict):
+            continue
+
+        text_value = str(item.get("text", "")).strip()
+
+        if not text_value:
+            continue
+
+        id_value = str(item.get("id", "")).strip()
+
+        if not id_value:
+            id_value = f"todo-{index}"
+
+        id_value = id_value[:80]
+
+        if id_value in seen_ids:
+            continue
+
+        seen_ids.add(id_value)
+        cleaned.append({
+            "id": id_value,
+            "text": text_value[:120],
+            "done": bool(item.get("done", False)),
+        })
+
+        if len(cleaned) >= 50:
+            break
+
+    return cleaned
+
 @app.get("/subjects", response_model=SubjectList)
 def get_subjects(current_user: User = Depends(get_current_user)):
     if not current_user.subjects_json:
@@ -327,6 +372,33 @@ def update_subject_websites(
     db.commit()
 
     return {"message": "Subject websites saved."}
+
+@app.get("/todo-items", response_model=TodoItemList)
+def get_todo_items(current_user: User = Depends(get_current_user)):
+    if not current_user.todo_items_json:
+        return TodoItemList(todo_items=[])
+
+    try:
+        todo_items = json.loads(current_user.todo_items_json)
+    except json.JSONDecodeError:
+        todo_items = []
+
+    return TodoItemList(todo_items=clean_todo_items(todo_items))
+
+
+@app.put("/todo-items")
+def update_todo_items(
+    todo_data: TodoItemList,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.todo_items_json = json.dumps(clean_todo_items([
+        item.model_dump()
+        for item in todo_data.todo_items
+    ]))
+    db.commit()
+
+    return {"message": "Todo list saved."}
 
 @app.get("/timetable", response_model=TimetableList)
 def get_timetable(current_user: User = Depends(get_current_user)):

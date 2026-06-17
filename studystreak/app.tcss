@@ -211,20 +211,93 @@ TabPane {
 
 /* #------------------dashboard------------------- */
 
+#home-status-card,
+#home-action-card,
+#home-focus-readiness-card,
+#home-review-card,
+#home-wins-card,
+#home-weak-topics-card,
 #setup-checklist,
+#recent-sessions,
 #dashboard {
-    text-align: center;
+    text-align: left;
     color: #cfcfcf;
     border: round #555555;
     padding: 1;
     margin-bottom: 1;
 }
 
-#recent-sessions {
-    color: #cfcfcf;
-    border: round #555555;
-    padding: 1;
+#home-status-card {
+    text-align: center;
+    border: round #666666;
+    background: #0b0b0b;
+}
+
+#home-action-card {
+    border: round #777777;
+    background: #0d0d0d;
+    margin-bottom: 0;
+}
+
+#home-action-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-bottom: 2;
+}
+
+#home-prepare-focus-button {
+    width: 26;
+    background: #162415;
+    color: white;
+    border: tall #4d8a4d;
+    margin: 0 1;
+}
+
+#home-open-focus-button,
+#home-skip-action-button {
+    width: 14;
+    background: #141414;
+    color: #d8d8d8;
+    border: tall #666666;
+    margin: 0 1;
+}
+
+#home-skip-action-button {
+    color: #b8b8b8;
+}
+
+#home-prepare-focus-button:hover {
+    background: #203720;
+    border: tall #78b878;
+}
+
+#home-open-focus-button:hover,
+#home-skip-action-button:hover {
+    background: #222222;
+    color: white;
+    border: tall #999999;
+}
+
+#home-card-row-one,
+#home-card-row-two {
+    width: 100%;
+    height: auto;
     margin-bottom: 1;
+}
+
+#home-focus-readiness-card,
+#home-review-card,
+#home-wins-card,
+#home-weak-topics-card {
+    width: 1fr;
+    min-height: 8;
+    margin: 0 1 0 0;
+}
+
+#home-review-card,
+#home-weak-topics-card {
+    margin-right: 0;
 }
 
 
@@ -322,6 +395,7 @@ TabPane {
 }
 
 #focus-subject-select,
+#focus-topic-select,
 #focus-website-input,
 #focus-minutes-input,
 #focus-quality-json-input {
@@ -409,6 +483,66 @@ TabPane {
 #focus-quality-summary {
     margin-top: 1;
     text-align: center;
+}
+
+FocusSessionScreen {
+    background: black;
+    align: center middle;
+}
+
+#focus-overlay {
+    width: 100%;
+    height: 100%;
+    background: black;
+    align: center middle;
+}
+
+#focus-overlay-content {
+    width: 42;
+    height: auto;
+    align: center middle;
+}
+
+#focus-overlay-timer {
+    width: 100%;
+    height: auto;
+    text-align: center;
+    color: white;
+    text-style: bold;
+    margin-bottom: 2;
+}
+
+#focus-overlay-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#focus-overlay-open-website-button,
+#focus-overlay-stop-button {
+    width: 18;
+    background: #050505;
+    color: #e8e8e8;
+    border: tall #777777;
+    margin: 0 1;
+}
+
+#focus-overlay-stop-button {
+    background: #2a1111;
+    color: #f0d0d0;
+    border: tall #8a4a4a;
+}
+
+#focus-overlay-open-website-button:hover {
+    background: #1a1a1a;
+    color: white;
+    border: tall #aaaaaa;
+}
+
+#focus-overlay-stop-button:hover {
+    background: #3a1f1f;
+    color: white;
+    border: tall #c06a6a;
 }
 
 
@@ -795,15 +929,55 @@ TabPane {
 
 #new-subject-input,
 #new-subject-website-input,
+#new-subject-topic-input,
 #edit-website-subject-select,
 #edit-website-input,
+#edit-topic-input,
 #delete-subject-select {
     margin-bottom: 1;
 }
 
 #new-subject-website-input,
-#edit-website-input {
+#new-subject-topic-input,
+#edit-website-input,
+#edit-topic-input {
     height: 5;
+}
+
+.field-hint {
+    color: #999999;
+    margin-bottom: 0;
+}
+
+#focus-note-modal {
+    width: 70;
+    height: auto;
+    border: round #777777;
+    background: #111111;
+    padding: 1 2;
+}
+
+#focus-note-title {
+    text-align: center;
+    text-style: bold;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#focus-note-summary {
+    text-align: center;
+    color: #999999;
+    margin-bottom: 1;
+}
+
+#focus-note-input {
+    height: 8;
+    margin-bottom: 1;
+}
+
+#focus-note-button-row {
+    height: auto;
+    align: center middle;
 }
 
 #subject-button-row,
@@ -1292,6 +1466,12 @@ Button:hover,
     border: none;
 }
 
+#home-status-card,
+#home-action-card,
+#home-focus-readiness-card,
+#home-review-card,
+#home-wins-card,
+#home-weak-topics-card,
 #setup-checklist,
 #dashboard,
 #recent-sessions,
@@ -1310,6 +1490,16 @@ Button:hover,
     background: #111111;
     color: #cfcfcf;
     border: round #555555;
+}
+
+#home-status-card {
+    background: #0b0b0b;
+    border: round #666666;
+}
+
+#home-action-card {
+    background: #0d0d0d;
+    border: round #777777;
 }
 
 #settings-title,
@@ -1661,6 +1851,45 @@ Screen.light-mode {
     border: round #405b6d;
 }
 
+.light-mode #home-prepare-focus-button {
+    background: #dfead6;
+    color: #173f20;
+    border: tall #4f8a5b;
+    text-style: bold;
+}
+
+.light-mode #home-open-focus-button,
+.light-mode #home-skip-action-button {
+    background: #efe3c8;
+    color: #254f6f;
+    border: tall #9a8567;
+    text-style: bold;
+}
+
+.light-mode #home-skip-action-button {
+    color: #665844;
+}
+
+.light-mode #home-prepare-focus-button:hover {
+    background: #c9dfbd;
+    color: #0f3218;
+    border: tall #376a42;
+}
+
+.light-mode #home-open-focus-button:hover,
+.light-mode #home-skip-action-button:hover {
+    background: #d9c8aa;
+    color: #2b2620;
+    border: tall #7f6a4d;
+}
+
+.light-mode #home-status-card,
+.light-mode #home-action-card,
+.light-mode #home-focus-readiness-card,
+.light-mode #home-review-card,
+.light-mode #home-wins-card,
+.light-mode #home-weak-topics-card,
+.light-mode #focus-note-modal,
 .light-mode #setup-checklist,
 .light-mode #dashboard,
 .light-mode #recent-sessions,
@@ -1679,6 +1908,15 @@ Screen.light-mode {
     background: #fbf1dd;
     color: #2b2620;
     border: round #9a8567;
+}
+
+.light-mode .field-hint,
+.light-mode #focus-note-summary {
+    color: #6f5b3d;
+}
+
+.light-mode #focus-note-title {
+    color: #254f6f;
 }
 
 .light-mode #settings-title,
@@ -1742,6 +1980,29 @@ Screen.light-mode {
 .light-mode Checkbox:focus > .toggle--label {
     background: transparent;
     color: #2b2620;
+}
+
+.light-mode Checkbox.-on {
+    background: #dfead6;
+    color: #173f20;
+    text-style: bold;
+}
+
+.light-mode Checkbox.-on > .toggle--button,
+.light-mode Checkbox.-on:focus > .toggle--button,
+.light-mode Checkbox > .toggle--button.-on,
+.light-mode Checkbox:focus > .toggle--button.-on {
+    background: #254f6f;
+    color: #fff8e8;
+    border: tall #173f20;
+    text-style: bold;
+}
+
+.light-mode Checkbox.-on > .toggle--label,
+.light-mode Checkbox.-on:focus > .toggle--label {
+    background: transparent;
+    color: #173f20;
+    text-style: bold;
 }
 
 .light-mode #cancel-focus-button,

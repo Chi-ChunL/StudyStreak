@@ -24,6 +24,7 @@ from studystreak.api_client import (
     upload_subjects,
     upload_streak,
     upload_timetable,
+    upload_todo_items,
 )
 
 
@@ -42,6 +43,8 @@ def get_default_data():
         "weekly_goal": 300,
         "subjects": [],
         "subject_websites": {},
+        "subject_topics": {},
+        "todo_items": [],
         "sync": {
             "device_id": None,
             "last_local_update": None,
@@ -166,6 +169,107 @@ def clean_subject_websites(subject_websites):
 
     return cleaned
 
+def clean_topic_list(raw_topics):
+    if isinstance(raw_topics, str):
+        raw_items = raw_topics.replace(",", "\n").splitlines()
+    elif isinstance(raw_topics, list):
+        raw_items = raw_topics
+    else:
+        raw_items = []
+
+    topics = []
+
+    for raw_topic in raw_items:
+        topic = str(raw_topic).strip()
+
+        if topic == "":
+            continue
+
+        if topic not in topics:
+            topics.append(topic)
+
+    return topics[:30]
+
+def clean_subject_topics(subject_topics):
+    if not isinstance(subject_topics, dict):
+        return {}
+
+    cleaned = {}
+
+    for subject, topics in subject_topics.items():
+        clean_subject = str(subject).strip().lower()
+
+        if clean_subject == "":
+            continue
+
+        cleaned[clean_subject] = clean_topic_list(topics)
+
+    return cleaned
+
+def clean_todo_items(raw_items):
+    if not isinstance(raw_items, list):
+        return []
+
+    cleaned = []
+    seen_ids = set()
+
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            continue
+
+        text = str(raw_item.get("text", "")).strip()
+
+        if text == "":
+            continue
+
+        item_id = str(raw_item.get("id", "")).strip()
+
+        if item_id == "":
+            item_id = f"todo-{uuid4()}-{index}"
+
+        item_id = item_id[:80]
+
+        if item_id in seen_ids:
+            continue
+
+        seen_ids.add(item_id)
+        cleaned.append({
+            "id": item_id,
+            "text": text[:120],
+            "done": bool(raw_item.get("done", False)),
+        })
+
+        if len(cleaned) >= 50:
+            break
+
+    return cleaned
+
+def merge_todo_items(data, server_todo_items):
+    data = repair_data(data)
+    server_items = clean_todo_items(server_todo_items)
+    local_items = clean_todo_items(data.get("todo_items", []))
+    local_by_id = {
+        item["id"]: item
+        for item in local_items
+    }
+    merged_items = []
+    updates = 0
+
+    for server_item in server_items:
+        if local_by_id.get(server_item["id"]) != server_item:
+            updates += 1
+
+        merged_items.append(server_item)
+        local_by_id.pop(server_item["id"], None)
+
+    merged_items.extend(local_by_id.values())
+    merged_items = clean_todo_items(merged_items)
+
+    if data.get("todo_items", []) != merged_items:
+        data["todo_items"] = merged_items
+
+    return updates
+
 def merge_subject_websites(data, server_subject_websites):
     data = repair_data(data)
     server_subject_websites = clean_subject_websites(server_subject_websites)
@@ -220,6 +324,16 @@ def repair_data(data):
         data["subject_websites"] = {}
 
     data["subject_websites"] = clean_subject_websites(data["subject_websites"])
+
+    if "subject_topics" not in data:
+        data["subject_topics"] = {}
+
+    data["subject_topics"] = clean_subject_topics(data["subject_topics"])
+
+    if "todo_items" not in data:
+        data["todo_items"] = []
+
+    data["todo_items"] = clean_todo_items(data["todo_items"])
 
     if "timetable" not in data:
         data["timetable"] = []
@@ -701,6 +815,7 @@ def sync_profile_data(data):
                 "Subject website upload",
                 lambda: upload_subject_websites(token, data.get("subject_websites", {})),
             ),
+            ("Todo upload", lambda: upload_todo_items(token, data.get("todo_items", []))),
             ("Timetable upload", lambda: upload_timetable(token, data.get("timetable", []))),
         ]
 

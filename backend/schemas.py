@@ -63,6 +63,14 @@ class SubjectList(BaseModel):
 class SubjectWebsiteList(BaseModel):
     subject_websites: dict[str, list[str]] = Field(default_factory=dict)
 
+class TodoItem(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=120)
+    done: bool = False
+
+class TodoItemList(BaseModel):
+    todo_items: list[TodoItem] = Field(default_factory=list, max_length=50)
+
 class StreakUpdate(BaseModel):
     current_streak: int = Field(ge=0, le=3650)
 

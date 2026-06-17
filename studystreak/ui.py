@@ -21,12 +21,14 @@ from textual.widgets import (
 )
 
 from studystreak.storage import (
+    clean_topic_list,
     clean_website_list,
     get_default_data,
     get_utc_now_text,
     load_data,
     merge_focus_quality_sessions,
     merge_subject_websites,
+    merge_todo_items,
     protect_streak_today,
     repair_data,
     save_data,
@@ -51,6 +53,7 @@ from studystreak.api_client import (
     get_profile_data,
     get_focus_quality_sessions,
     get_subject_websites,
+    get_todo_items,
     get_latest_package_version,
 )
 from studystreak.profile_sync import decrypt_profile_data
@@ -69,11 +72,11 @@ POMODORO_BREAK_MINUTES = 10
 SETUP_TOUR_STEPS = [
     {
         "id": "dashboard",
-        "title": "Dashboard",
-        "target_label": "Open Dashboard",
+        "title": "Home",
+        "target_label": "Open Home",
         "body": (
-            "This is your home base. Check your streak, setup checklist, "
-            "weekly goal, and recent sessions."
+            "This is your home base. Check the next best action, setup checklist, "
+            "weekly progress, and recent sessions."
         ),
         "hint": "Look around, then press Done.",
         "manual": True,
@@ -201,6 +204,16 @@ def format_website_list_text(websites):
 
 def get_subject_website_list(data, subject):
     return clean_website_list(data.get("subject_websites", {}).get(str(subject), []))
+
+def get_subject_topic_list(data, subject):
+    return clean_topic_list(data.get("subject_topics", {}).get(str(subject), []))
+
+def format_topic_list_text(topics):
+    return "\n".join(clean_topic_list(topics))
+
+def get_topic_options(data, subject):
+    topics = get_subject_topic_list(data, subject)
+    return [(topic, topic) for topic in topics]
  
 def calculate_current_streak(data):
     study_dates = set(data.get("streak_days", []))
@@ -301,7 +314,7 @@ def get_recent_sessions(data, limit=5):
  
     if len(sessions) == 0:
         return (
-            "[bold]Recent study sessions[/bold]\n"
+            "[bold]Recent Sessions[/bold]\n"
             "No sessions yet.\n"
             "Next: open Log Session or Focus Mode to record your first study block."
         )
@@ -309,16 +322,346 @@ def get_recent_sessions(data, limit=5):
     recent_sessions = sessions[-limit:]
     recent_sessions.reverse()
  
-    lines = ["[bold]Recent study sessions[/bold]"]
+    lines = ["[bold]Recent Sessions[/bold]", "Subject       Time     Date"]
  
     for session in recent_sessions:
         subject = session["subject"]
+        topic = session.get("topic", "")
         minutes = session["minutes"]
         session_date = session["date"]
- 
-        lines.append(f"{subject} - {minutes} minutes - {session_date}")
+        subject_text = subject if topic == "" else f"{subject}: {topic}"
+        lines.append(f"{subject_text[:20].ljust(20)} {str(minutes).rjust(4)} min  {session_date}")
+
+    tiny_sessions = [
+        session for session in sessions[-8:]
+        if session.get("minutes", 0) <= 2
+    ]
+
+    if len(tiny_sessions) >= 2:
+        lines.append("")
+        lines.append(
+            "[yellow]Pattern spotted:[/yellow] several tiny sessions. "
+            "Try one focused 25-35 minute block."
+        )
  
     return "\n".join(lines)
+
+def format_minutes_label(minutes):
+    minutes = max(0, int(minutes))
+
+    if minutes < 60:
+        return f"{minutes} min"
+
+    hours = minutes // 60
+    remaining = minutes % 60
+
+    if remaining == 0:
+        return f"{hours}h"
+
+    return f"{hours}h {remaining}m"
+
+def get_subject_minutes_this_week(data):
+    today = date.today()
+    start_of_week = today - timedelta(days=today.weekday())
+    totals = {}
+
+    for session in data.get("sessions", []):
+        try:
+            session_date = date.fromisoformat(session.get("date", ""))
+        except ValueError:
+            continue
+
+        if start_of_week <= session_date <= today:
+            subject = session.get("subject", "unknown")
+            totals[subject] = totals.get(subject, 0) + session.get("minutes", 0)
+
+    return totals
+
+def get_today_subject_totals(data):
+    today_text = str(date.today())
+    totals = {}
+
+    for session in data.get("sessions", []):
+        if session.get("date") != today_text:
+            continue
+
+        subject = session.get("subject", "unknown")
+        totals[subject] = totals.get(subject, 0) + session.get("minutes", 0)
+
+    return totals
+
+def get_most_common_subject(sessions):
+    counts = {}
+
+    for session in sessions:
+        subject = session.get("subject")
+
+        if subject:
+            counts[subject] = counts.get(subject, 0) + 1
+
+    if not counts:
+        return None
+
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+def get_due_review_items(data, limit=3):
+    today_text = str(date.today())
+    due_items = []
+
+    for item in data.get("review_items", []):
+        next_due = str(item.get("next_due", ""))
+
+        if next_due and next_due <= today_text:
+            due_items.append(item)
+
+    due_items.sort(key=lambda item: str(item.get("next_due", "")))
+    return due_items[:limit]
+
+def get_next_best_action(data):
+    subjects = data.get("subjects", [])
+    sessions = data.get("sessions", [])
+    weekly_goal = data.get("weekly_goal", 300)
+    weekly_minutes = calculate_weekly_minutes(data)
+    today_minutes = calculate_today_minutes(data)
+    subject_week_totals = get_subject_minutes_this_week(data)
+    due_reviews = get_due_review_items(data, limit=1)
+
+    if due_reviews:
+        item = due_reviews[0]
+        subject = item.get("subject", "Choose a subject")
+        topic = item.get("topic", "Due review")
+        return {
+            "subject": subject,
+            "topic": topic,
+            "method": "Retrieval practice",
+            "target_minutes": 25,
+            "reason": f"{topic} is due for review today.",
+        }
+
+    today_text = str(date.today())
+    tiny_today = [
+        session for session in sessions
+        if session.get("date") == today_text and session.get("minutes", 0) <= 2
+    ]
+
+    if len(tiny_today) >= 2:
+        subject = get_most_common_subject(tiny_today) or get_most_common_subject(sessions)
+        topic = (get_subject_topic_list(data, subject) or ["Core practice block"])[0]
+        return {
+            "subject": subject or "Choose a subject",
+            "topic": topic,
+            "method": "Past-paper questions + error correction",
+            "target_minutes": 35,
+            "reason": "Several tiny sessions today. Try one focused block.",
+        }
+
+    if weekly_goal > 0:
+        days_left = max(1, 7 - date.today().weekday())
+        remaining_minutes = max(0, weekly_goal - weekly_minutes)
+        daily_target = (remaining_minutes + days_left - 1) // days_left
+
+        if today_minutes < daily_target and remaining_minutes > 0:
+            if subject_week_totals:
+                subject = min(subject_week_totals.items(), key=lambda item: item[1])[0]
+            elif subjects:
+                subject = subjects[0]
+            else:
+                subject = "Choose a subject"
+
+            return {
+                "subject": subject,
+                "topic": (get_subject_topic_list(data, subject) or ["Weekly goal progress"])[0],
+                "method": "Focused study block",
+                "target_minutes": max(25, min(35, daily_target)),
+                "reason": f"Aim for about {daily_target} min/day to hit this week's goal.",
+            }
+
+    if subjects:
+        if subject_week_totals:
+            subject = min(subject_week_totals.items(), key=lambda item: item[1])[0]
+            reason = "This is one of your least-studied subjects this week."
+        elif sessions:
+            subject = sessions[-1].get("subject", subjects[0])
+            reason = "Continue from your most recent subject."
+        else:
+            subject = subjects[0]
+            reason = "Start building your first real study block."
+
+        return {
+            "subject": subject,
+            "topic": (get_subject_topic_list(data, subject) or ["Next useful block"])[0],
+            "method": "Retrieval practice",
+            "target_minutes": 25,
+            "reason": reason,
+        }
+
+    return {
+        "subject": "Choose a subject",
+        "topic": "First setup step",
+        "method": "Create a subject, then start a 25-minute focus session",
+        "target_minutes": 25,
+        "reason": "No study subject exists yet.",
+    }
+
+def get_review_queue_display(data):
+    due_reviews = get_due_review_items(data)
+    todo_items = [
+        item for item in data.get("todo_items", [])
+        if not item.get("done", False)
+    ]
+    lines = ["[bold]Todo / Review[/bold]"]
+
+    if todo_items:
+        lines.append("[bold cyan]Todo[/bold cyan]")
+
+        for item in todo_items[:4]:
+            lines.append(f"[ ] {str(item.get('text', 'Untitled task'))[:34]}")
+
+        if len(todo_items) > 4:
+            lines.append(f"+ {len(todo_items) - 4} more in the browser overlay")
+
+    if not due_reviews:
+        if not todo_items:
+            lines.extend([
+                "No todo tasks yet.",
+                "Add tasks in the browser extension to sync them here.",
+            ])
+        return "\n".join(lines)
+
+    if todo_items:
+        lines.append("")
+
+    lines.append("[bold cyan]Review[/bold cyan]")
+
+    for index, item in enumerate(due_reviews, start=1):
+        topic = str(item.get("topic", "Untitled topic"))[:22]
+        subject = str(item.get("subject", "unknown"))[:14]
+        lines.append(f"{index}. {topic.ljust(22)} {subject}")
+
+    lines.append("[bold]R[/bold] start top review")
+
+    return "\n".join(lines)
+
+def get_focus_readiness_display(data, server_token):
+    focus_sessions = data.get("focus_quality_sessions", [])
+    subject_websites = data.get("subject_websites", {})
+    saved_website_sets = sum(1 for websites in subject_websites.values() if websites)
+    extension_status = "[green]ready[/green]" if focus_sessions or server_token else "[yellow]connect account[/yellow]"
+    shield_status = "[green]active[/green]" if saved_website_sets else "[yellow]save websites[/yellow]"
+    latest_score = "none"
+    latest_distraction = "none"
+
+    if focus_sessions:
+        latest = focus_sessions[0]
+        latest_score = f"{latest.get('score', 0)}%"
+        latest_distraction = latest.get("top_distracted_domain", "none")
+
+    lines = [
+        "[bold]Focus Readiness[/bold]",
+        f"Extension: {extension_status}",
+        f"Blocked sites: {shield_status}",
+        "Current mode: Custom / Pomodoro",
+        f"Last focus quality: {latest_score}",
+        f"Last distraction: {latest_distraction}",
+    ]
+
+    return "\n".join(lines)
+
+def get_todays_wins_display(data):
+    today_minutes = calculate_today_minutes(data)
+    today_sessions = calculate_today_sessions(data)
+    protected = "Yes" if has_studied_today(data) else "No"
+    today_totals = get_today_subject_totals(data)
+    best_subject = "none"
+
+    if today_totals:
+        best_subject = max(today_totals.items(), key=lambda item: item[1])[0]
+
+    if today_minutes == 0:
+        encouragement = "One focused block changes the day."
+    elif today_minutes < 25:
+        encouragement = "Good start. Make the next block count."
+    else:
+        encouragement = "Solid progress. Keep the chain alive."
+
+    return "\n".join([
+        "[bold]Today's Wins[/bold]",
+        f"{format_minutes_label(today_minutes)} studied",
+        f"{today_sessions} session(s) completed",
+        f"Streak protected: {protected}",
+        f"Best subject: {best_subject}",
+        encouragement,
+    ])
+
+def get_weak_topics_display(data):
+    due_reviews = get_due_review_items(data)
+    subject_week_totals = get_subject_minutes_this_week(data)
+    subjects = data.get("subjects", [])
+    sessions = data.get("sessions", [])
+    weak_items = []
+
+    for item in due_reviews:
+        weak_items.append(
+            f"{item.get('subject', 'unknown')}: {item.get('topic', 'review due')}"
+        )
+
+    today_text = str(date.today())
+    tiny_today = [
+        session for session in sessions
+        if session.get("date") == today_text and session.get("minutes", 0) <= 2
+    ]
+
+    if len(tiny_today) >= 2:
+        subject = get_most_common_subject(tiny_today) or "recent study"
+        weak_items.append(f"{subject}: needs one longer block")
+
+    for subject in subjects:
+        if subject_week_totals.get(subject, 0) == 0:
+            weak_items.append(f"{subject}: not studied this week")
+
+    if not weak_items:
+        weak_items.append("No weak topics spotted yet.")
+        weak_items.append("Log topics after sessions to improve this.")
+
+    lines = ["[bold]Weak Topics[/bold]"]
+
+    for item in weak_items[:3]:
+        lines.append(item)
+
+    return "\n".join(lines)
+
+def get_home_status_card(data, logged_in, server_online, server_token):
+    streak_count = calculate_current_streak(data)
+    weekly_minutes = calculate_weekly_minutes(data)
+    weekly_goal = data.get("weekly_goal", 300)
+    weekly_progress_bar = create_progress_bar(weekly_minutes, weekly_goal)
+
+    if server_online is True:
+        server_status = "Connected"
+    elif server_online is False:
+        server_status = "Offline"
+    else:
+        server_status = "Checking"
+
+    sync_status = "Synced" if server_token is not None else "Local only"
+    account_status = "Logged in" if logged_in else "Not logged in"
+
+    return "\n".join([
+        "[bold white]StudyStreak[/bold white]",
+        f"Account: {account_status}   Server: {server_status}   Sync: {sync_status}   Streak: {streak_count}d",
+        f"Week goal: {weekly_minutes} / {weekly_goal} min   Progress: {weekly_progress_bar}",
+    ])
+
+def get_home_action_card(data):
+    recommendation = get_next_best_action(data)
+
+    return "\n".join([
+        "[bold white]NEXT BEST ACTION[/bold white]",
+        f"Study: {recommendation['subject']} - {recommendation['topic']}",
+        f"Method: {recommendation['method']}",
+        f"Target: {recommendation['target_minutes']} min",
+        f"Why: {recommendation['reason']}",
+    ])
  
  
 def get_session_options(data):
@@ -328,10 +671,12 @@ def get_session_options(data):
  
     for index, session in enumerate(sessions):
         subject = session["subject"]
+        topic = session.get("topic", "")
         minutes = session["minutes"]
         session_date = session["date"]
- 
-        label = f"{session_date} - {subject} - {minutes} minutes"
+
+        subject_text = subject if topic == "" else f"{subject} / {topic}"
+        label = f"{session_date} - {subject_text} - {minutes} minutes"
         options.append((label, str(index)))
  
     options.reverse()
@@ -569,6 +914,11 @@ def get_subject_stats(data):
         lines.append(f"  This week: {weekly_minutes}m")
         lines.append(f"  Best study day: {best_day}")
 
+        topics = get_subject_topic_list(data, subject)
+
+        if topics:
+            lines.append(f"  Topics: {', '.join(topics[:4])}")
+
         focus_stats = focus_by_subject.get(subject)
 
         if focus_stats:
@@ -729,6 +1079,23 @@ def format_focus_quality_time(seconds):
         return f"{remaining_seconds}s"
 
     return f"{minutes}m {remaining_seconds}s"
+
+def format_countdown_time(seconds):
+    seconds = max(0, int(seconds))
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+    return f"{minutes:02d}:{remaining_seconds:02d}"
+
+def format_focus_countdown_display(seconds_left, phase):
+    timer_text = format_countdown_time(seconds_left)
+    phase_text = phase.upper()
+    return (
+        "\n\n\n\n"
+        f"[bold white]{timer_text}[/]\n"
+        "\n"
+        f"[bold white]{phase_text}[/]\n"
+        "\n\n"
+    )
 
 def get_focus_quality_summary(data):
     sessions = data.get("focus_quality_sessions", [])
@@ -951,6 +1318,71 @@ class StreakEffectScreen(ModalScreen):
         self.app.pop_screen()
  
  
+class FocusSessionScreen(ModalScreen):
+    def compose(self) -> ComposeResult:
+        with Container(id="focus-overlay"):
+            with Vertical(id="focus-overlay-content"):
+                yield Static("", id="focus-overlay-timer")
+                with Horizontal(id="focus-overlay-buttons"):
+                    yield Button("Open Website", id="focus-overlay-open-website-button")
+                    yield Button("Stop Focus", id="focus-overlay-stop-button")
+
+    def on_mount(self):
+        self.update_display()
+        self.query_one("#focus-overlay-stop-button", Button).focus()
+
+    def update_display(self):
+        self.query_one("#focus-overlay-timer", Static).update(
+            self.app.get_focus_overlay_display()
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "focus-overlay-open-website-button":
+            self.app.play_ui_sound()
+            self.app.open_focus_websites(show_message=False)
+            return
+
+        if event.button.id == "focus-overlay-stop-button":
+            self.app.play_ui_sound()
+            self.app.cancel_focus_session()
+            return
+
+
+class FocusSessionNoteScreen(ModalScreen):
+    def __init__(self, session_completed_at, subject, topic, minutes):
+        super().__init__()
+        self.session_completed_at = session_completed_at
+        self.subject = subject
+        self.topic = topic
+        self.minutes = minutes
+
+    def compose(self) -> ComposeResult:
+        with Container(id="focus-note-modal"):
+            yield Static("Session complete", id="focus-note-title")
+            yield Static(
+                f"{self.subject} - {self.topic or 'No topic'} - {self.minutes} min",
+                id="focus-note-summary",
+            )
+            yield TextArea("", id="focus-note-input")
+            with Horizontal(id="focus-note-button-row"):
+                yield Button("Save Note", id="save-focus-note-button")
+                yield Button("Skip", id="skip-focus-note-button")
+
+    def on_mount(self):
+        self.query_one("#focus-note-input", TextArea).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save-focus-note-button":
+            note = self.query_one("#focus-note-input", TextArea).text.strip()
+            self.app.save_focus_session_note(self.session_completed_at, note)
+            self.app.pop_screen()
+            return
+
+        if event.button.id == "skip-focus-note-button":
+            self.app.pop_screen()
+            return
+
+
 class DeleteSubjectConfirmScreen(ModalScreen):
     def __init__(self, subject):
         super().__init__()
@@ -1048,8 +1480,11 @@ class StudyStreakApp(App):
     loading_settings = False
     focus_seconds_left = 0
     focus_subject = None
+    focus_topic = ""
+    focus_websites = []
     focus_minutes = 0
     focus_mode = "manual"
+    focus_overlay_screen = None
     pomodoro_phase = "work"
     pomodoro_completed_work_blocks = 0
     pomodoro_logged_minutes = 0
@@ -1101,12 +1536,23 @@ class StudyStreakApp(App):
                     yield Button("End Tour", id="tour-end-button")
 
             with TabbedContent(initial="dashboard-tab", id="main-tabs"):
-                with TabPane("Dashboard", id="dashboard-tab"):
+                with TabPane("Home", id="dashboard-tab"):
+                    yield Static("", id="home-status-card")
+                    yield Static("", id="home-action-card")
+                    with Horizontal(id="home-action-buttons"):
+                        yield Button("Enter  Prepare Focus", id="home-prepare-focus-button")
+                        yield Button("F  Focus", id="home-open-focus-button")
+                        yield Button("S  Skip", id="home-skip-action-button")
+                    with Horizontal(id="home-card-row-one"):
+                        yield Static("", id="home-focus-readiness-card")
+                        yield Static("", id="home-review-card")
+                    with Horizontal(id="home-card-row-two"):
+                        yield Static("", id="home-wins-card")
+                        yield Static("", id="home-weak-topics-card")
                     yield Static("", id="setup-checklist")
-                    yield Static("", id="dashboard")
                     yield Static("", id="recent-sessions")
  
-                with TabPane("Subject Stats", id="subject-stats-tab"):
+                with TabPane("Subjects", id="subject-stats-tab"):
                     yield Static("", id="subject-stats")
  
                 with TabPane("Log Session", id="log-tab"):
@@ -1126,7 +1572,7 @@ class StudyStreakApp(App):
  
                     yield Static("", id="message")
  
-                with TabPane("Manage Session", id="manage-tab"):
+                with TabPane("Logs", id="manage-tab"):
                     yield Static("Select a study session to delete.", id="manage-title")
  
                     yield Select(
@@ -1190,7 +1636,7 @@ class StudyStreakApp(App):
                         yield Button("Edit Selected", id="edit-timetable-button")
                         yield Button("Delete Selected", id="delete-timetable-button")
 
-                with TabPane("Focus Mode", id="focus-tab"):
+                with TabPane("Focus", id="focus-tab"):
                     yield Static("Start a focused study session.", id="focus-title")
  
                     yield Select(
@@ -1198,7 +1644,14 @@ class StudyStreakApp(App):
                         id="focus-subject-select",
                         prompt="Choose a subject",
                     )
- 
+
+                    yield Select(
+                        options=[],
+                        id="focus-topic-select",
+                        prompt="Choose a topic (optional)",
+                    )
+
+                    yield Static("Focus websites", classes="field-hint")
                     yield TextArea(
                         "",
                         id="focus-website-input",
@@ -1372,10 +1825,17 @@ class StudyStreakApp(App):
                                         placeholder="Subject name, e.g. maths",
                                         id="new-subject-input",
                                     )
- 
+
+                                    yield Static("Websites, one per line", classes="field-hint")
                                     yield TextArea(
                                         "",
                                         id="new-subject-website-input",
+                                    )
+
+                                    yield Static("Topics, one per line", classes="field-hint")
+                                    yield TextArea(
+                                        "",
+                                        id="new-subject-topic-input",
                                     )
  
                                     with Horizontal(id="subject-button-row"):
@@ -1385,21 +1845,28 @@ class StudyStreakApp(App):
  
                                 with Vertical(id="subject-edit-panel"):
  
-                                    yield Static("Edit subject website.", id="edit-website-title")
+                                    yield Static("Edit subject websites and topics.", id="edit-website-title")
  
                                     yield Select(
                                         options=[],
                                         id="edit-website-subject-select",
                                         prompt="Choose a subject",
                                     )
- 
+
+                                    yield Static("Websites, one per line", classes="field-hint")
                                     yield TextArea(
                                         "",
                                         id="edit-website-input",
                                     )
+
+                                    yield Static("Topics, one per line", classes="field-hint")
+                                    yield TextArea(
+                                        "",
+                                        id="edit-topic-input",
+                                    )
  
                                     with Horizontal(id="edit-website-button-row"):
-                                        yield Button("Update Website", id="update-website-button")
+                                        yield Button("Update Subject", id="update-website-button")
  
                                     yield Static("", id="edit-website-message")
  
@@ -1472,25 +1939,21 @@ class StudyStreakApp(App):
  
     def update_dashboard(self):
         data = load_data()
- 
-        streak_count = calculate_current_streak(data)
-        streak_protected_today = "Yes" if has_studied_today(data) else "No"
-        today_minutes = calculate_today_minutes(data)
-        today_sessions = calculate_today_sessions(data)
-        weekly_minutes = calculate_weekly_minutes(data)
-        weekly_goal = data["weekly_goal"]
-        weekly_progress_bar = create_progress_bar(weekly_minutes, weekly_goal)
-        weekly_goal_status = get_weekly_goal_status(weekly_minutes, weekly_goal)
-        weekly_goal_nudge = get_weekly_goal_nudge(weekly_minutes, weekly_goal)
+        weekly_goal = data.get("weekly_goal", 300)
 
-
-        dashboard = self.query_one("#dashboard", Static)
+        home_status_card = self.query_one("#home-status-card", Static)
+        home_action_card = self.query_one("#home-action-card", Static)
+        home_focus_readiness_card = self.query_one("#home-focus-readiness-card", Static)
+        home_review_card = self.query_one("#home-review-card", Static)
+        home_wins_card = self.query_one("#home-wins-card", Static)
+        home_weak_topics_card = self.query_one("#home-weak-topics-card", Static)
         setup_checklist = self.query_one("#setup-checklist", Static)
         recent_sessions = self.query_one("#recent-sessions", Static)
         subject_stats = self.query_one("#subject-stats", Static)
         session_select = self.query_one("#session-select", Select)
         subject_select = self.query_one("#subject-select", Select)
         focus_subject_select = self.query_one("#focus-subject-select", Select)
+        focus_topic_select = self.query_one("#focus-topic-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
         delete_subject_select = self.query_one("#delete-subject-select", Select)
         edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
@@ -1508,27 +1971,31 @@ class StudyStreakApp(App):
 
         weekly_goal_input.placeholder = f"Current goal: {weekly_goal} minutes"
  
-        setup_checklist.update(
-            get_setup_checklist(
+        setup_text = get_setup_checklist(
+            data,
+            self.logged_in,
+            self.server_is_online,
+            get_server_token(),
+        )
+        setup_checklist.update(setup_text)
+        setup_checklist.display = "fully set up" not in setup_text
+
+        home_status_card.update(
+            get_home_status_card(
                 data,
                 self.logged_in,
                 self.server_is_online,
                 get_server_token(),
             )
         )
-
-        dashboard.update(
-            f"[bold]Current streak:[/bold] {streak_count} days\n"
-            f"[bold]Streak protected today:[/bold] {streak_protected_today}\n"
-            f"[bold]Studied today:[/bold] {today_minutes} minutes\n"
-            f"[bold]Sessions today:[/bold] {today_sessions}\n"
-            f"[bold]Weekly goal:[/bold] {weekly_minutes} / {weekly_goal} minutes\n"
-            f"[bold]Progress:[/bold] {weekly_progress_bar}\n"
-            f"[bold]Weekly goal status:[/bold] {weekly_goal_status}\n"
-            f"[bold]Pace:[/bold] {weekly_goal_nudge}"
-        )
+        home_action_card.update(get_home_action_card(data))
+        home_focus_readiness_card.update(get_focus_readiness_display(data, get_server_token()))
+        home_review_card.update(get_review_queue_display(data))
+        home_wins_card.update(get_todays_wins_display(data))
+        home_weak_topics_card.update(get_weak_topics_display(data))
  
         recent_sessions.update(get_recent_sessions(data))
+        recent_sessions.display = False
         subject_stats.update(get_subject_stats(data))
         focus_quality_summary.update(get_focus_quality_summary(data))
  
@@ -1540,6 +2007,9 @@ class StudyStreakApp(App):
  
         focus_subject_select.set_options(get_subject_options(data))
         focus_subject_select.clear()
+
+        focus_topic_select.set_options([])
+        focus_topic_select.clear()
  
         delete_subject_select.set_options(get_subject_options(data))
         delete_subject_select.clear()
@@ -1637,7 +2107,7 @@ class StudyStreakApp(App):
             "\n".join([
                 f"[bold]Tour status:[/bold] {status}",
                 "The tour now stays inside the app while you click through setup.",
-                "It guides Dashboard, Subjects, websites, Timetable, Log Session, Focus Mode, and Sync.",
+                "It guides Home, Subjects, websites, Timetable, Log Session, Focus, and Sync.",
                 "You can replay it any time from here.",
             ])
         )
@@ -2000,6 +2470,135 @@ class StudyStreakApp(App):
         else:
             self.last_escape_time = current_time
             self.show_temp_message("#global-message", "[yellow]Press Esc again to quit.[/yellow]")
+
+    def home_is_active(self):
+        if not self.logged_in or self.focus_overlay_screen is not None:
+            return False
+
+        try:
+            return self.query_one("#main-tabs", TabbedContent).active == "dashboard-tab"
+        except Exception:
+            return False
+
+    def on_key(self, event):
+        if not self.home_is_active():
+            return
+
+        key = event.key.lower()
+
+        if key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.prepare_recommended_focus()
+            return
+
+        if key == "f":
+            event.prevent_default()
+            event.stop()
+            self.play_ui_sound()
+            self.set_main_tab("focus-tab")
+            self.focus_tour_widget("#focus-minutes-input")
+            return
+
+        if key == "s":
+            event.prevent_default()
+            event.stop()
+            self.skip_home_action()
+            return
+
+        if key == "r":
+            event.prevent_default()
+            event.stop()
+            self.open_home_review_action()
+            return
+
+    def fill_focus_form(self, subject, minutes, message, topic=None):
+        data = load_data()
+
+        if subject not in data.get("subjects", []):
+            self.set_main_tab("settings-tab")
+            self.show_settings_panel("#subjects-panel")
+            self.show_temp_message(
+                "#global-message",
+                "[yellow]Add a subject before starting focus.[/yellow]",
+            )
+            return False
+
+        self.set_main_tab("focus-tab")
+
+        focus_subject_select = self.query_one("#focus-subject-select", Select)
+        focus_topic_select = self.query_one("#focus-topic-select", Select)
+        focus_minutes_input = self.query_one("#focus-minutes-input", Input)
+        website_input = self.query_one("#focus-website-input", TextArea)
+
+        focus_subject_select.value = subject
+        focus_topic_select.set_options(get_topic_options(data, subject))
+        focus_topic_select.clear()
+
+        if topic in get_subject_topic_list(data, subject):
+            focus_topic_select.value = topic
+
+        focus_minutes_input.value = str(minutes)
+        website_input.load_text(format_website_list_text(get_subject_website_list(data, subject)))
+
+        self.show_temp_message("#focus-message", message)
+        self.focus_tour_widget("#start-focus-button")
+        return True
+
+    def prepare_recommended_focus(self, play_sound_effect=True):
+        if play_sound_effect:
+            self.play_ui_sound()
+
+        data = load_data()
+        recommendation = get_next_best_action(data)
+        subject = recommendation["subject"]
+        minutes = recommendation["target_minutes"]
+
+        if self.fill_focus_form(
+            subject,
+            minutes,
+            (
+                "[green]Recommended focus block prepared. "
+                "Press Start Focus when you are ready.[/green]"
+            ),
+        ):
+            self.query_one("#pomodoro-mode-checkbox", Checkbox).value = False
+
+    def skip_home_action(self, play_sound_effect=True):
+        if play_sound_effect:
+            self.play_ui_sound()
+
+        action_card = self.query_one("#home-action-card", Static)
+        action_card.update(
+            "\n".join([
+                "[bold white]NEXT BEST ACTION[/bold white]",
+                "Skipped for now.",
+                "Press [bold]F[/bold] to open Focus, or log a session when you finish studying.",
+            ])
+        )
+
+    def open_home_review_action(self):
+        self.play_ui_sound()
+        data = load_data()
+        due_reviews = get_due_review_items(data, limit=1)
+
+        if not due_reviews:
+            self.show_temp_message(
+                "#global-message",
+                "[yellow]No review topics yet. Add topics after sessions to unlock reviews.[/yellow]",
+            )
+            return
+
+        item = due_reviews[0]
+        subject = item.get("subject", "")
+        topic = item.get("topic", "review")
+
+        self.fill_focus_form(
+            subject,
+            25,
+            f"[green]Review focus prepared for {topic}.[/green]",
+            topic=topic,
+        )
  
     def show_streak_effect(self, streak_count):
         if streak_count > 0:
@@ -2023,6 +2622,9 @@ class StudyStreakApp(App):
  
         if subject in data["subject_websites"]:
             del data["subject_websites"][subject]
+
+        if subject in data["subject_topics"]:
+            del data["subject_topics"][subject]
  
         data["sessions"] = [
             session for session in data["sessions"]
@@ -2045,12 +2647,106 @@ class StudyStreakApp(App):
             f"Removed {deleted_session_count} linked session(s) "
             f"and {deleted_timetable_count} timetable item(s).[/yellow]",
         )
+
+    def get_focus_websites_for_subject(self, subject, prefer_focus_input=True):
+        websites = []
+
+        if prefer_focus_input:
+            try:
+                website_input = self.query_one("#focus-website-input", TextArea)
+                websites = clean_website_list(website_input.text)
+            except Exception:
+                websites = []
+
+        if len(websites) == 0:
+            websites = get_subject_website_list(load_data(), subject)
+
+        return websites
+
+    def open_focus_websites(self, subject=None, show_message=True):
+        if subject is None:
+            if self.focus_subject is not None:
+                subject = self.focus_subject
+            else:
+                focus_subject_select = self.query_one("#focus-subject-select", Select)
+                subject = focus_subject_select.value
+
+        if is_blank_select_value(subject):
+            if show_message:
+                self.show_temp_message("#focus-message", "[red]Please choose a subject first.[/red]")
+            return False
+
+        if self.focus_subject == str(subject) and len(self.focus_websites) > 0:
+            websites = self.focus_websites
+        else:
+            websites = self.get_focus_websites_for_subject(subject)
+
+        if len(websites) == 0:
+            if show_message:
+                self.show_temp_message(
+                    "#focus-message",
+                    "[red]No websites saved for this subject. Please enter one manually.[/red]",
+                )
+            return False
+
+        for website in websites:
+            webbrowser.open(website)
+
+        if show_message:
+            self.show_temp_message(
+                "#focus-message",
+                f"[green]Opened {len(websites)} website(s) for {subject}.[/green]",
+            )
+
+        return True
+
+    def get_focus_phase_text(self):
+        if self.focus_mode == "pomodoro" and self.pomodoro_phase == "break":
+            return "Break"
+
+        return "Work"
+
+    def get_focus_overlay_display(self):
+        return format_focus_countdown_display(
+            self.focus_seconds_left,
+            self.get_focus_phase_text(),
+        )
+
+    def show_focus_overlay(self):
+        if self.focus_overlay_screen is not None:
+            self.update_focus_overlay()
+            return
+
+        self.focus_overlay_screen = FocusSessionScreen()
+        self.push_screen(self.focus_overlay_screen)
+
+    def update_focus_overlay(self):
+        if self.focus_overlay_screen is None:
+            return
+
+        try:
+            self.focus_overlay_screen.update_display()
+        except Exception:
+            self.focus_overlay_screen = None
+
+    def close_focus_overlay(self):
+        if self.focus_overlay_screen is None:
+            return
+
+        self.focus_overlay_screen = None
+
+        try:
+            self.pop_screen()
+        except Exception:
+            pass
  
-    def start_focus_session(self, subject, minutes, pomodoro_mode=False):
+    def start_focus_session(self, subject, minutes, pomodoro_mode=False, topic=""):
         focus_timer = self.query_one("#focus-timer", Static)
         focus_message = self.query_one("#focus-message", Static)
  
         self.focus_subject = subject
+        self.focus_topic = str(topic).strip()
+        self.focus_websites = self.get_focus_websites_for_subject(subject)
         self.focus_mode = "pomodoro" if pomodoro_mode else "manual"
         self.pomodoro_phase = "work"
         self.pomodoro_completed_work_blocks = 0
@@ -2077,6 +2773,7 @@ class StudyStreakApp(App):
             )
  
         self.update_focus_display()
+        self.show_focus_overlay()
  
         self.focus_timer = self.set_interval(1, self.tick_focus_timer)
  
@@ -2100,9 +2797,11 @@ class StudyStreakApp(App):
                 focus_phase.update("[bold cyan]Break[/bold cyan]")
             else:
                 focus_phase.update("[bold green]Work[/bold green]")
+            self.update_focus_overlay()
             return
 
         focus_phase.update("[bold green]Work[/bold green]")
+        self.update_focus_overlay()
  
     def tick_focus_timer(self):
         self.focus_seconds_left -= 1
@@ -2118,16 +2817,22 @@ class StudyStreakApp(App):
  
         self.update_focus_display()
 
-    def log_completed_focus_minutes(self, subject, minutes):
+    def log_completed_focus_minutes(self, subject, minutes, topic=""):
         data = load_data()
         already_studied_today = has_studied_today(data)
+        completed_at = get_utc_now_text()
+        clean_topic = str(topic).strip()
 
         session = {
             "subject": str(subject).lower(),
             "minutes": minutes,
             "date": str(date.today()),
             "source": "focus",
+            "completed_at": completed_at,
         }
+
+        if clean_topic:
+            session["topic"] = clean_topic
 
         data["sessions"].append(session)
         protect_streak_today(data)
@@ -2153,7 +2858,7 @@ class StudyStreakApp(App):
         updated_data = load_data()
         streak_count = calculate_current_streak(updated_data)
 
-        return already_studied_today, achievement_unlocked, streak_count
+        return already_studied_today, achievement_unlocked, streak_count, completed_at
 
     def complete_pomodoro_phase(self):
         focus_message = self.query_one("#focus-message", Static)
@@ -2162,8 +2867,12 @@ class StudyStreakApp(App):
             completed_subject = self.focus_subject
             completed_minutes = POMODORO_WORK_MINUTES
 
-            already_studied_today, achievement_unlocked, streak_count = (
-                self.log_completed_focus_minutes(completed_subject, completed_minutes)
+            already_studied_today, achievement_unlocked, streak_count, _ = (
+                self.log_completed_focus_minutes(
+                    completed_subject,
+                    completed_minutes,
+                    self.focus_topic,
+                )
             )
 
             self.pomodoro_completed_work_blocks += 1
@@ -2201,13 +2910,22 @@ class StudyStreakApp(App):
             self.focus_timer = None
  
         completed_subject = self.focus_subject
+        completed_topic = self.focus_topic
         completed_minutes = self.focus_minutes
-        already_studied_today, achievement_unlocked, streak_count = (
-            self.log_completed_focus_minutes(completed_subject, completed_minutes)
+        self.close_focus_overlay()
+
+        already_studied_today, achievement_unlocked, streak_count, completed_at = (
+            self.log_completed_focus_minutes(
+                completed_subject,
+                completed_minutes,
+                completed_topic,
+            )
         )
  
         self.focus_seconds_left = 0
         self.focus_subject = None
+        self.focus_topic = ""
+        self.focus_websites = []
         self.focus_minutes = 0
         self.focus_mode = "manual"
         self.pomodoro_phase = "work"
@@ -2227,6 +2945,14 @@ class StudyStreakApp(App):
         elif not achievement_unlocked:
             self.play_focus_complete_sound()
         self.show_focus_notification(completed_subject, completed_minutes)
+        self.push_screen(
+            FocusSessionNoteScreen(
+                completed_at,
+                completed_subject,
+                completed_topic,
+                completed_minutes,
+            )
+        )
 
     def upload_focus_session_in_background(self, token, subject, minutes):
         #avoid freezing the UI when the server is slow or offline
@@ -2257,6 +2983,8 @@ class StudyStreakApp(App):
  
         self.focus_seconds_left = 0
         self.focus_subject = None
+        self.focus_topic = ""
+        self.focus_websites = []
         self.focus_minutes = 0
         was_pomodoro = self.focus_mode == "pomodoro"
         logged_minutes = self.pomodoro_logged_minutes
@@ -2271,6 +2999,7 @@ class StudyStreakApp(App):
         focus_phase = self.query_one("#focus-phase", Static)
         focus_phase.update("")
         focus_phase.display = False
+        self.close_focus_overlay()
 
         if was_pomodoro:
             focus_message.update(
@@ -2281,6 +3010,25 @@ class StudyStreakApp(App):
 
         self.show_temp_message("#focus-message", "[yellow]Focus session cancelled. No study time was logged.[/yellow]")
 
+    def save_focus_session_note(self, session_completed_at, note):
+        clean_note = str(note).strip()
+
+        if clean_note == "":
+            self.show_temp_message("#focus-message", "[yellow]No note saved.[/yellow]")
+            return
+
+        data = load_data()
+
+        for session in reversed(data.get("sessions", [])):
+            if session.get("completed_at") == session_completed_at:
+                session["note"] = clean_note
+                save_data(data)
+                self.update_dashboard()
+                self.show_temp_message("#focus-message", "[green]Session note saved.[/green]")
+                return
+
+        self.show_temp_message("#focus-message", "[red]Could not find that session to save the note.[/red]")
+
     def on_select_changed(self, event: Select.Changed) -> None:
         data = load_data()
 
@@ -2290,25 +3038,34 @@ class StudyStreakApp(App):
         if event.select.id == "focus-subject-select":
             selected_subject = event.value
             website_input = self.query_one("#focus-website-input", TextArea)
+            topic_select = self.query_one("#focus-topic-select", Select)
  
             if is_blank_select_value(selected_subject):
                 website_input.load_text("")
+                topic_select.set_options([])
+                topic_select.clear()
                 return
  
             saved_websites = get_subject_website_list(data, selected_subject)
             website_input.load_text(format_website_list_text(saved_websites))
+            topic_select.set_options(get_topic_options(data, selected_subject))
+            topic_select.clear()
             return
  
         if event.select.id == "edit-website-subject-select":
             selected_subject = event.value
             edit_website_input = self.query_one("#edit-website-input", TextArea)
+            edit_topic_input = self.query_one("#edit-topic-input", TextArea)
  
             if is_blank_select_value(selected_subject):
                 edit_website_input.load_text("")
+                edit_topic_input.load_text("")
                 return
  
             saved_websites = get_subject_website_list(data, selected_subject)
+            saved_topics = get_subject_topic_list(data, selected_subject)
             edit_website_input.load_text(format_website_list_text(saved_websites))
+            edit_topic_input.load_text(format_topic_list_text(saved_topics))
     
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if self.suppress_next_tab_sound:
@@ -2361,6 +3118,7 @@ class StudyStreakApp(App):
                 cloud_data,
             )
             self.sync_subject_websites_from_server(server_token)
+            self.sync_todo_items_from_server(server_token)
             self.sync_focus_quality_from_server(server_token)
 
         except ValueError:
@@ -2478,6 +3236,26 @@ class StudyStreakApp(App):
         server_subject_websites = get_subject_websites(token)
         data = load_data()
         updated_count = merge_subject_websites(data, server_subject_websites)
+
+        if updated_count > 0:
+            save_data(data)
+
+        return {
+            "updates": updated_count,
+        }
+
+    def sync_todo_items_from_server(self, token=None):
+        #download authenticated browser todo items and merge them locally
+        token = token or get_server_token()
+
+        if token is None:
+            return {
+                "updates": 0,
+            }
+
+        server_todo_items = get_todo_items(token)
+        data = load_data()
+        updated_count = merge_todo_items(data, server_todo_items)
 
         if updated_count > 0:
             save_data(data)
@@ -2921,12 +3699,15 @@ class StudyStreakApp(App):
 
         self.focus_seconds_left = 0
         self.focus_subject = None
+        self.focus_topic = ""
+        self.focus_websites = []
         self.focus_minutes = 0
         self.focus_mode = "manual"
         self.pomodoro_phase = "work"
         self.pomodoro_completed_work_blocks = 0
         self.pomodoro_logged_minutes = 0
         self.last_notified_sync_error = None
+        self.close_focus_overlay()
 
         focus_timer = self.query_one("#focus-timer", Static)
         focus_timer.update("")
@@ -3029,6 +3810,19 @@ class StudyStreakApp(App):
         
         self.play_ui_sound()
 
+        if event.button.id == "home-prepare-focus-button":
+            self.prepare_recommended_focus(play_sound_effect=False)
+            return
+
+        if event.button.id == "home-open-focus-button":
+            self.set_main_tab("focus-tab")
+            self.focus_tour_widget("#focus-minutes-input")
+            return
+
+        if event.button.id == "home-skip-action-button":
+            self.skip_home_action(play_sound_effect=False)
+            return
+
         if event.button.id == "tour-go-button":
             self.navigate_to_current_tour_step()
             self.update_tour_guide()
@@ -3104,6 +3898,7 @@ class StudyStreakApp(App):
                         cloud_data,
                     )
                     self.sync_subject_websites_from_server(server_token)
+                    self.sync_todo_items_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
 
                 except ValueError:
@@ -3144,6 +3939,7 @@ class StudyStreakApp(App):
                     prefer_cloud_when_equal=True,
                 )
                 self.sync_subject_websites_from_server(server_token)
+                self.sync_todo_items_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
                 self.show_temp_message(
@@ -3203,6 +3999,7 @@ class StudyStreakApp(App):
                 set_server_token(server_token)
                 save_data(private_data)
                 self.sync_subject_websites_from_server(server_token)
+                self.sync_todo_items_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
             except ValueError as signup_error:
@@ -3211,6 +4008,7 @@ class StudyStreakApp(App):
                     set_server_token(server_token)
                     save_data(private_data)
                     self.sync_subject_websites_from_server(server_token)
+                    self.sync_todo_items_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
                     cloud_message = "[green]Account created and linked to existing cloud login.[/green]"
 
@@ -3304,6 +4102,7 @@ class StudyStreakApp(App):
         if event.button.id == "sync-now-button":
             try:
                 subject_sync_result = self.sync_subject_websites_from_server()
+                todo_sync_result = self.sync_todo_items_from_server()
                 data = load_data()
                 save_data(data)
                 sync_result = self.sync_focus_quality_from_server()
@@ -3313,10 +4112,11 @@ class StudyStreakApp(App):
                 return
 
             subject_website_updates = subject_sync_result["updates"]
+            todo_updates = todo_sync_result["updates"]
             added_count = sync_result["updates"]
             streak_protected = sync_result["streak_protected"]
             self.update_sync_status()
-            if added_count > 0 or subject_website_updates > 0:
+            if added_count > 0 or subject_website_updates > 0 or todo_updates > 0:
                 self.update_dashboard()
                 achievement_unlocked = self.unlock_earned_achievements()
                 if streak_protected:
@@ -3331,37 +4131,25 @@ class StudyStreakApp(App):
                         self.show_streak_effect(streak_count)
                     return
 
-                if added_count > 0 and subject_website_updates > 0:
-                    self.show_temp_message(
-                        "#sync-message",
-                        (
-                            "[green]Sync started. Added "
-                            f"{added_count} Chrome focus update(s) and updated "
-                            f"{subject_website_updates} subject website set(s).[/green]"
-                        ),
-                    )
-                    self.set_timer(2, self.update_sync_status)
-                    return
+                message_parts = []
+
+                if added_count > 0:
+                    message_parts.append(f"{added_count} Chrome focus update(s)")
 
                 if subject_website_updates > 0:
-                    self.show_temp_message(
-                        "#sync-message",
-                        (
-                            "[green]Sync started. Updated "
-                            f"{subject_website_updates} subject website set(s).[/green]"
-                        ),
-                    )
-                    self.set_timer(2, self.update_sync_status)
-                    return
+                    message_parts.append(f"{subject_website_updates} subject website set(s)")
+
+                if todo_updates > 0:
+                    message_parts.append(f"{todo_updates} todo update(s)")
 
                 self.show_temp_message(
                     "#sync-message",
-                    f"[green]Sync started. Added {added_count} Chrome focus update(s).[/green]",
+                    f"[green]Sync started. Updated {', '.join(message_parts)}.[/green]",
                 )
             else:
                 self.show_temp_message(
                     "#sync-message",
-                    "[yellow]Sync started. No new Chrome focus updates.[/yellow]",
+                    "[yellow]Sync started. No new browser updates.[/yellow]",
                 )
             self.set_timer(2, self.update_sync_status)
             return
@@ -3480,9 +4268,11 @@ class StudyStreakApp(App):
         if event.button.id == "add-subject-button":
             new_subject_input = self.query_one("#new-subject-input", Input)
             new_subject_website_input = self.query_one("#new-subject-website-input", TextArea)
+            new_subject_topic_input = self.query_one("#new-subject-topic-input", TextArea)
  
             new_subject = new_subject_input.value.strip().lower()
             websites = clean_website_list(new_subject_website_input.text)
+            topics = clean_topic_list(new_subject_topic_input.text)
  
             if new_subject == "":
                 self.show_temp_message("#subject-message", "[red]Please enter a subject name.[/red]")
@@ -3498,30 +4288,37 @@ class StudyStreakApp(App):
             data["subjects"].sort()
  
             data["subject_websites"][new_subject] = websites
+            data["subject_topics"][new_subject] = topics
  
             save_data(data)
  
             self.update_dashboard()
             self.unlock_earned_achievements()
  
-            if len(websites) == 0:
+            if len(websites) == 0 and len(topics) == 0:
                 self.show_temp_message("#subject-message", f"[green]Added subject: {new_subject}[/green]")
             else:
                 self.show_temp_message(
                     "#subject-message",
-                    f"[green]Added subject: {new_subject} with {len(websites)} website(s).[/green]",
+                    (
+                        f"[green]Added subject: {new_subject} with "
+                        f"{len(websites)} website(s) and {len(topics)} topic(s).[/green]"
+                    ),
                 )
  
             new_subject_input.value = ""
             new_subject_website_input.load_text("")
+            new_subject_topic_input.load_text("")
             return
  
         if event.button.id == "update-website-button":
             edit_website_subject_select = self.query_one("#edit-website-subject-select", Select)
             edit_website_input = self.query_one("#edit-website-input", TextArea)
+            edit_topic_input = self.query_one("#edit-topic-input", TextArea)
  
             selected_subject = edit_website_subject_select.value
             websites = clean_website_list(edit_website_input.text)
+            topics = clean_topic_list(edit_topic_input.text)
  
             if is_blank_select_value(selected_subject):
                 self.show_temp_message("#edit-website-message", "[yellow]Please choose a subject first.[/yellow]")
@@ -3535,19 +4332,23 @@ class StudyStreakApp(App):
                 return
  
             data["subject_websites"][str(selected_subject)] = websites
+            data["subject_topics"][str(selected_subject)] = topics
             save_data(data)
  
             self.update_dashboard()
  
-            if len(websites) == 0:
+            if len(websites) == 0 and len(topics) == 0:
                 self.show_temp_message(
                     "#edit-website-message",
-                    f"[yellow]Cleared websites for {selected_subject}.[/yellow]",
+                    f"[yellow]Cleared websites and topics for {selected_subject}.[/yellow]",
                 )
             else:
                 self.show_temp_message(
                     "#edit-website-message",
-                    f"[green]Updated {selected_subject} with {len(websites)} website(s).[/green]",
+                    (
+                        f"[green]Updated {selected_subject} with "
+                        f"{len(websites)} website(s) and {len(topics)} topic(s).[/green]"
+                    ),
                 )
  
             return
@@ -3565,34 +4366,7 @@ class StudyStreakApp(App):
             return
  
         if event.button.id == "open-website-button":
-            focus_subject_select = self.query_one("#focus-subject-select", Select)
-            website_input = self.query_one("#focus-website-input", TextArea)
-
-            subject = focus_subject_select.value
-            websites = clean_website_list(website_input.text)
-            data = load_data()
-
-            if is_blank_select_value(subject):
-                self.show_temp_message("#focus-message", "[red]Please choose a subject first.[/red]")
-                return
-
-            if len(websites) == 0:
-                websites = get_subject_website_list(data, subject)
-
-            if len(websites) == 0:
-                self.show_temp_message(
-                    "#focus-message",
-                    "[red]No websites saved for this subject. Please enter one manually.[/red]",
-                )
-                return
-
-            for website in websites:
-                webbrowser.open(website)
-
-            self.show_temp_message(
-                "#focus-message",
-                f"[green]Opened {len(websites)} website(s) for {subject}.[/green]",
-            )
+            self.open_focus_websites()
             return
         
         if event.button.id == "show-timetable-form-button":
@@ -3846,10 +4620,12 @@ class StudyStreakApp(App):
 
         if event.button.id == "start-focus-button":
             focus_subject_select = self.query_one("#focus-subject-select", Select)
+            focus_topic_select = self.query_one("#focus-topic-select", Select)
             focus_minutes_input = self.query_one("#focus-minutes-input", Input)
             pomodoro_checkbox = self.query_one("#pomodoro-mode-checkbox", Checkbox)
  
             subject = focus_subject_select.value
+            topic = "" if is_blank_select_value(focus_topic_select.value) else str(focus_topic_select.value)
             minutes_text = focus_minutes_input.value.strip()
             pomodoro_mode = pomodoro_checkbox.value
  
@@ -3858,7 +4634,12 @@ class StudyStreakApp(App):
                 return
 
             if pomodoro_mode:
-                self.start_focus_session(str(subject), POMODORO_WORK_MINUTES, pomodoro_mode=True)
+                self.start_focus_session(
+                    str(subject),
+                    POMODORO_WORK_MINUTES,
+                    pomodoro_mode=True,
+                    topic=topic,
+                )
                 return
  
             if minutes_text == "":
@@ -3875,7 +4656,7 @@ class StudyStreakApp(App):
                 self.show_temp_message("#focus-message", "[red]Focus duration must be more than 0.[/red]")
                 return
  
-            self.start_focus_session(str(subject), minutes)
+            self.start_focus_session(str(subject), minutes, topic=topic)
             return
 
         if event.button.id == "save-focus-import-secret-button":

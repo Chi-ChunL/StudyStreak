@@ -28,6 +28,11 @@ const todaySessions = document.querySelector("#today-sessions");
 const strictFocusEnabled = document.querySelector("#strict-focus-enabled");
 const pomodoroEnabledInput = document.querySelector("#pomodoro-enabled");
 const pomodoroState = document.querySelector("#pomodoro-state");
+const todoOverlayEnabled = document.querySelector("#todo-overlay-enabled");
+const newTodoInput = document.querySelector("#new-todo-input");
+const addTodoButton = document.querySelector("#add-todo-button");
+const todoList = document.querySelector("#todo-list");
+const clearCompletedTodosButton = document.querySelector("#clear-completed-todos-button");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
@@ -37,7 +42,9 @@ let currentSettings = {
     pomodoroEnabled: false,
     selectedFocusSubject: "",
     syncedSubjects: [],
-    syncedSubjectWebsites: {}
+    syncedSubjectWebsites: {},
+    todoOverlayEnabled: true,
+    todoItems: []
 };
 
 const EMPTY_SUMMARY = {
@@ -60,6 +67,37 @@ function parseDomains(value) {
         .split(/\n|,/)
         .map((domain) => domain.trim())
         .filter(Boolean);
+}
+
+function cleanTodoItems(items) {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .map((item, index) => {
+            const text = String(item?.text || "").trim();
+
+            if (!text) {
+                return null;
+            }
+
+            return {
+                id: String(item?.id || `todo-${Date.now()}-${index}`),
+                text: text.slice(0, 120),
+                done: Boolean(item?.done)
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 50);
+}
+
+function createTodoId() {
+    if (crypto?.randomUUID) {
+        return crypto.randomUUID();
+    }
+
+    return `todo-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
 function formatSeconds(seconds) {
@@ -171,6 +209,72 @@ function renderTodaySessions(settings = currentSettings) {
         item.append(subject, details);
         todaySessions.append(item);
     });
+}
+
+function renderTodoList(items = currentSettings.todoItems) {
+    const safeItems = cleanTodoItems(items);
+    currentSettings.todoItems = safeItems;
+
+    if (!todoList) {
+        return;
+    }
+
+    todoList.replaceChildren();
+
+    if (safeItems.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "todo-empty";
+        empty.textContent = "No tasks yet. Add what you want visible on the overlay.";
+        todoList.append(empty);
+        clearCompletedTodosButton.disabled = true;
+        return;
+    }
+
+    safeItems.forEach((item) => {
+        const row = document.createElement("div");
+        const checkbox = document.createElement("input");
+        const text = document.createElement("span");
+        const removeButton = document.createElement("button");
+
+        row.className = item.done ? "todo-item done" : "todo-item";
+        row.dataset.todoId = item.id;
+
+        checkbox.type = "checkbox";
+        checkbox.checked = item.done;
+        checkbox.title = "Mark task complete";
+
+        text.className = "todo-text";
+        text.textContent = item.text;
+
+        removeButton.className = "todo-delete-button";
+        removeButton.type = "button";
+        removeButton.textContent = "X";
+        removeButton.title = "Remove task";
+
+        row.append(checkbox, text, removeButton);
+        todoList.append(row);
+    });
+
+    clearCompletedTodosButton.disabled = !safeItems.some((item) => item.done);
+}
+
+async function saveTodoItems(items, message = "Todo list saved.") {
+    const safeItems = cleanTodoItems(items);
+
+    const result = await chrome.runtime.sendMessage({
+        type: "saveTodoItems",
+        todoItems: safeItems
+    });
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Could not save todo list.";
+        return false;
+    }
+
+    currentSettings.todoItems = safeItems;
+    renderTodoList(safeItems);
+    statusText.textContent = message;
+    return true;
 }
 
 
@@ -340,9 +444,7 @@ function setAccountGate(settings) {
     const loggedIn = isLoggedIn(settings);
 
     tabButtons.forEach((button) => {
-        if (button.dataset.tab !== "account") {
-            button.disabled = !loggedIn;
-        }
+        button.disabled = !["account", "todo", "settings"].includes(button.dataset.tab) && !loggedIn;
     });
 
     saveButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
@@ -356,8 +458,14 @@ function setAccountGate(settings) {
     focusSubject.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     strictFocusEnabled.disabled = !loggedIn;
     pomodoroEnabledInput.disabled = !loggedIn || currentSettings.focusActive;
+    todoOverlayEnabled.disabled = false;
+    newTodoInput.disabled = false;
+    addTodoButton.disabled = false;
+    clearCompletedTodosButton.disabled = !cleanTodoItems(currentSettings.todoItems).some((item) => item.done);
 
-    if (!loggedIn) {
+    const activePanel = document.querySelector(".tab-panel.active")?.dataset.panel || "account";
+
+    if (!loggedIn && !["account", "todo", "settings"].includes(activePanel)) {
         showPopupTab("account");
     }
 }
@@ -396,6 +504,7 @@ async function loadSettings() {
         remindersEnabled.checked = state.settings.remindersEnabled;
         strictFocusEnabled.checked = Boolean(state.settings.strictFocusEnabled);
         pomodoroEnabledInput.checked = Boolean(state.settings.pomodoroEnabled);
+        todoOverlayEnabled.checked = state.settings.todoOverlayEnabled !== false;
 
         currentSettings = {
             ...currentSettings,
@@ -410,6 +519,7 @@ async function loadSettings() {
         renderFocusSummary(state.summary);
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
+        renderTodoList(state.settings.todoItems);
         renderAccount(currentSettings);
     } catch (error) {
         console.error(error);
@@ -454,6 +564,7 @@ async function loginToServer() {
     renderFocusSummary(state?.summary || EMPTY_SUMMARY);
     renderCompletedSummary(currentSettings.lastCompletedFocusSession);
     renderFocusHistory(currentSettings.focusHistory);
+    renderTodoList(currentSettings.todoItems);
     renderAccount(currentSettings);
     statusText.textContent = currentSettings.syncedSubjects.length > 0
         ? "Logged in."
@@ -474,7 +585,8 @@ async function logoutFromServer() {
         focusSubject: "",
         selectedFocusSubject: "",
         lastCompletedFocusSession: null,
-        focusHistory: []
+        focusHistory: [],
+        todoItems: []
     };
 
     allowedDomains.value = "";
@@ -482,6 +594,7 @@ async function logoutFromServer() {
     renderSubjectOptions([], "");
     renderCompletedSummary(null);
     renderFocusHistory([]);
+    renderTodoList([]);
     renderAccount(currentSettings);
     statusText.textContent = "Logged out.";
     showPopupTab("account");
@@ -506,6 +619,7 @@ async function refreshSubjects() {
         syncedSubjects: result.subjects || [],
         syncedSubjectWebsites: result.subjectWebsites || {},
         syncedTimetable: result.timetable || [],
+        todoItems: result.todoItems || currentSettings.todoItems || [],
         selectedFocusSubject: result.selectedFocusSubject || ""
     };
 
@@ -515,9 +629,11 @@ async function refreshSubjects() {
         currentSettings.selectedFocusSubject || currentSettings.focusSubject
     );
     setAccountGate(currentSettings);
+    renderTodoList(currentSettings.todoItems);
     const timetableCount = Array.isArray(result.timetable) ? result.timetable.length : 0;
+    const todoCount = cleanTodoItems(currentSettings.todoItems).length;
     statusText.textContent = currentSettings.syncedSubjects.length > 0
-        ? `Subjects refreshed. ${timetableCount} timetable reminders scheduled.`
+        ? `Subjects refreshed. ${timetableCount} timetable reminders scheduled. ${todoCount} todo task(s) synced.`
         : "No synced subjects yet.";
 }
 
@@ -531,7 +647,8 @@ async function saveSettings(showMessage = true) {
         settings: {
             remindersEnabled: remindersEnabled.checked,
             strictFocusEnabled: strictFocusEnabled.checked,
-            pomodoroEnabled: pomodoroEnabledInput.checked
+            pomodoroEnabled: pomodoroEnabledInput.checked,
+            todoOverlayEnabled: todoOverlayEnabled.checked
         }
     });
 
@@ -557,6 +674,23 @@ async function saveReminderToggle() {
     statusText.textContent = remindersEnabled.checked
         ? "Timetable notifications enabled."
         : "Timetable notifications disabled.";
+}
+
+async function saveTodoOverlayToggle() {
+    const result = await chrome.runtime.sendMessage({
+        type: "setTodoOverlayEnabled",
+        enabled: todoOverlayEnabled.checked
+    });
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Could not update todo overlay.";
+        return;
+    }
+
+    currentSettings.todoOverlayEnabled = todoOverlayEnabled.checked;
+    statusText.textContent = todoOverlayEnabled.checked
+        ? "Todo overlay enabled."
+        : "Todo overlay hidden.";
 }
 
 async function rememberSelectedSubject(subject) {
@@ -815,6 +949,58 @@ async function clearFocusHistory() {
     statusText.textContent = "Focus history cleared.";
 }
 
+async function addTodoItem() {
+    const text = newTodoInput.value.trim();
+
+    if (!text) {
+        statusText.textContent = "Type a task first.";
+        return;
+    }
+
+    const nextItems = [
+        ...cleanTodoItems(currentSettings.todoItems),
+        {
+            id: createTodoId(),
+            text,
+            done: false
+        }
+    ];
+
+    if (await saveTodoItems(nextItems, "Task added to overlay.")) {
+        newTodoInput.value = "";
+        newTodoInput.focus();
+    }
+}
+
+async function updateTodoItem(todoId, changes) {
+    const nextItems = cleanTodoItems(currentSettings.todoItems).map((item) => {
+        if (item.id !== todoId) {
+            return item;
+        }
+
+        return {
+            ...item,
+            ...changes
+        };
+    });
+
+    await saveTodoItems(nextItems, "Todo list updated.");
+}
+
+async function removeTodoItem(todoId) {
+    const nextItems = cleanTodoItems(currentSettings.todoItems)
+        .filter((item) => item.id !== todoId);
+
+    await saveTodoItems(nextItems, "Task removed.");
+}
+
+async function clearCompletedTodos() {
+    const nextItems = cleanTodoItems(currentSettings.todoItems)
+        .filter((item) => !item.done);
+
+    await saveTodoItems(nextItems, "Completed tasks cleared.");
+}
+
 tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
         showPopupTab(button.dataset.tab);
@@ -822,6 +1008,7 @@ tabButtons.forEach((button) => {
 });
 
 remindersEnabled.addEventListener("change", saveReminderToggle);
+todoOverlayEnabled.addEventListener("change", saveTodoOverlayToggle);
 focusSubject.addEventListener("change", async () => {
     renderFocusWebsitesForSubject(focusSubject.value);
     await rememberSelectedSubject(focusSubject.value);
@@ -836,6 +1023,32 @@ stopFocusButton.addEventListener("click", stopFocus);
 copySummaryButton.addEventListener("click", copySummary);
 copyJsonButton.addEventListener("click", copySummaryJson);
 clearHistoryButton.addEventListener("click", clearFocusHistory);
+addTodoButton.addEventListener("click", addTodoItem);
+clearCompletedTodosButton.addEventListener("click", clearCompletedTodos);
+newTodoInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        addTodoItem();
+    }
+});
+todoList.addEventListener("change", (event) => {
+    if (event.target?.matches('input[type="checkbox"]')) {
+        const todoId = event.target.closest(".todo-item")?.dataset.todoId;
+
+        if (todoId) {
+            updateTodoItem(todoId, { done: event.target.checked });
+        }
+    }
+});
+todoList.addEventListener("click", (event) => {
+    if (event.target?.matches(".todo-delete-button")) {
+        const todoId = event.target.closest(".todo-item")?.dataset.todoId;
+
+        if (todoId) {
+            removeTodoItem(todoId);
+        }
+    }
+});
 loginButton.addEventListener("click", loginToServer);
 logoutButton.addEventListener("click", logoutFromServer);
 
