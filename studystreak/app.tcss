@@ -385,6 +385,62 @@ TabPane {
     color: yellow;
 }
 
+#sessions-title {
+    text-align: center;
+    color: #cfcfcf;
+    margin-bottom: 1;
+}
+
+#sessions-layout {
+    height: auto;
+}
+
+#sessions-sidebar {
+    width: 22;
+    border-right: solid #555555;
+    padding-right: 1;
+}
+
+#sessions-content {
+    width: 1fr;
+    padding-left: 2;
+}
+
+#sessions-log-tab-button,
+#sessions-manage-tab-button {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#log-session-panel,
+#manage-session-panel {
+    height: auto;
+}
+
+#log-topic-select,
+#manual-session-note-input,
+#edit-session-subject-select,
+#edit-session-minutes-input,
+#edit-session-topic-input,
+#edit-session-note-input,
+#session-details-preview {
+    margin-bottom: 1;
+}
+
+#manual-session-note-input,
+#edit-session-note-input {
+    height: 5;
+}
+
+#manual-session-note-label,
+#edit-session-note-label {
+    color: #999999;
+}
+
+#session-details-preview {
+    padding: 1;
+}
+
 
 /* #------------------focus mode------------------- */
 
@@ -970,9 +1026,14 @@ FocusSessionScreen {
     margin-bottom: 1;
 }
 
+#focus-note-topic-select,
 #focus-note-input {
     height: 8;
     margin-bottom: 1;
+}
+
+#focus-note-topic-select {
+    height: auto;
 }
 
 #focus-note-button-row {
@@ -1435,6 +1496,8 @@ Button:hover,
 #settings-subjects-button,
 #settings-privacy-button,
 #settings-focus-import-button,
+#sessions-log-tab-button,
+#sessions-manage-tab-button,
 #subject-add-tab,
 #subject-edit-tab,
 #subject-delete-tab {
@@ -1458,6 +1521,8 @@ Button:hover,
 #settings-subjects-button:hover,
 #settings-privacy-button:hover,
 #settings-focus-import-button:hover,
+#sessions-log-tab-button:hover,
+#sessions-manage-tab-button:hover,
 #subject-add-tab:hover,
 #subject-edit-tab:hover,
 #subject-delete-tab:hover {
@@ -1475,6 +1540,7 @@ Button:hover,
 #setup-checklist,
 #dashboard,
 #recent-sessions,
+#session-details-preview,
 #subject-stats,
 #leaderboard,
 #achievements,
@@ -1516,6 +1582,7 @@ Button:hover,
 #subject-add-title,
 #edit-website-title,
 #delete-subject-title,
+#sessions-title,
 #log-title,
 #manage-title,
 #focus-title,
@@ -1790,6 +1857,8 @@ Screen.light-mode {
 .light-mode #settings-subjects-button,
 .light-mode #settings-privacy-button,
 .light-mode #settings-focus-import-button,
+.light-mode #sessions-log-tab-button,
+.light-mode #sessions-manage-tab-button,
 .light-mode #subject-add-tab,
 .light-mode #subject-edit-tab,
 .light-mode #subject-delete-tab {
@@ -1814,6 +1883,8 @@ Screen.light-mode {
 .light-mode #settings-subjects-button:hover,
 .light-mode #settings-privacy-button:hover,
 .light-mode #settings-focus-import-button:hover,
+.light-mode #sessions-log-tab-button:hover,
+.light-mode #sessions-manage-tab-button:hover,
 .light-mode #subject-add-tab:hover,
 .light-mode #subject-edit-tab:hover,
 .light-mode #subject-delete-tab:hover {
@@ -1893,6 +1964,7 @@ Screen.light-mode {
 .light-mode #setup-checklist,
 .light-mode #dashboard,
 .light-mode #recent-sessions,
+.light-mode #session-details-preview,
 .light-mode #subject-stats,
 .light-mode #leaderboard,
 .light-mode #achievements,
@@ -1911,6 +1983,8 @@ Screen.light-mode {
 }
 
 .light-mode .field-hint,
+.light-mode #manual-session-note-label,
+.light-mode #edit-session-note-label,
 .light-mode #focus-note-summary {
     color: #6f5b3d;
 }
@@ -1933,6 +2007,7 @@ Screen.light-mode {
 .light-mode #subject-add-title,
 .light-mode #edit-website-title,
 .light-mode #delete-subject-title,
+.light-mode #sessions-title,
 .light-mode #log-title,
 .light-mode #manage-title,
 .light-mode #focus-title,
@@ -1943,6 +2018,10 @@ Screen.light-mode {
 }
 
 .light-mode #settings-sidebar {
+    border-right: solid #9a8567;
+}
+
+.light-mode #sessions-sidebar {
     border-right: solid #9a8567;
 }
 

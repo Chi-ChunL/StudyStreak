@@ -1611,6 +1611,7 @@ class StudyStreakApp(App):
                                 )
 
                                 yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
+                                yield Static("Review note (optional)", id="manual-session-note-label")
                                 yield TextArea("", id="manual-session-note-input")
 
                                 with Horizontal(id="button-row"):
@@ -1637,6 +1638,7 @@ class StudyStreakApp(App):
                                 )
                                 yield Input(placeholder="Minutes", id="edit-session-minutes-input")
                                 yield Input(placeholder="Topic (optional)", id="edit-session-topic-input")
+                                yield Static("Review note", id="edit-session-note-label")
                                 yield TextArea("", id="edit-session-note-input")
 
                                 with Horizontal(id="manage-button-row"):
@@ -3163,6 +3165,7 @@ class StudyStreakApp(App):
         self.query_one("#session-details-preview", Static).update(
             "Choose a session to see its details."
         )
+        self.query_one("#edit-session-subject-select", Select).clear()
         self.query_one("#edit-session-minutes-input", Input).value = ""
         self.query_one("#edit-session-topic-input", Input).value = ""
         self.query_one("#edit-session-note-input", TextArea).load_text("")
@@ -3186,6 +3189,17 @@ class StudyStreakApp(App):
         subject_select = self.query_one("#edit-session-subject-select", Select)
 
         if subject:
+            subject_values = {
+                str(value)
+                for _, value in get_subject_options(data)
+            }
+
+            if subject not in subject_values:
+                subject_select.set_options([
+                    (subject, subject),
+                    *get_subject_options(data),
+                ])
+
             subject_select.value = subject
 
         self.query_one("#edit-session-minutes-input", Input).value = str(minutes)

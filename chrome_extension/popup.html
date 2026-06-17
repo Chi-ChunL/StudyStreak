@@ -86,6 +86,22 @@
                         <p id="focus-score"></p>
                         <p id="focus-time"></p>
                         <p id="focus-domain"></p>
+
+                        <div id="focus-review-panel" class="review-panel" hidden>
+                            <h3>Review this session</h3>
+                            <label>
+                                Topic
+                                <select id="focus-review-topic">
+                                    <option value="">No topic</option>
+                                </select>
+                            </label>
+                            <label>
+                                Note
+                                <textarea id="focus-review-note" rows="3" maxlength="1000"></textarea>
+                            </label>
+                            <button id="save-focus-review-button">Save Review</button>
+                            <button id="skip-focus-review-button">Skip Review</button>
+                        </div>
                     </section>
 
                     <section class="tab-panel" data-panel="todo" hidden>

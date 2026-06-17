@@ -33,6 +33,11 @@ const newTodoInput = document.querySelector("#new-todo-input");
 const addTodoButton = document.querySelector("#add-todo-button");
 const todoList = document.querySelector("#todo-list");
 const clearCompletedTodosButton = document.querySelector("#clear-completed-todos-button");
+const focusReviewPanel = document.querySelector("#focus-review-panel");
+const focusReviewTopic = document.querySelector("#focus-review-topic");
+const focusReviewNote = document.querySelector("#focus-review-note");
+const saveFocusReviewButton = document.querySelector("#save-focus-review-button");
+const skipFocusReviewButton = document.querySelector("#skip-focus-review-button");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
@@ -43,6 +48,7 @@ let currentSettings = {
     selectedFocusSubject: "",
     syncedSubjects: [],
     syncedSubjectWebsites: {},
+    syncedSubjectTopics: {},
     todoOverlayEnabled: true,
     todoItems: []
 };
@@ -120,9 +126,10 @@ function formatClock(seconds) {
 }
 
 function formatFocusSummaryText(summary) {
-    return [
+    const lines = [
         "StudyStreak focus summary",
         `Subject: ${summary.subject || "unknown"}`,
+        `Topic: ${summary.topic || "none"}`,
         `Score: ${summary.score}%`,
         `Focused: ${formatSeconds(summary.focusedSeconds)}`,
         `Distracted: ${formatSeconds(summary.distractedSeconds)}`,
@@ -130,7 +137,13 @@ function formatFocusSummaryText(summary) {
         `Server upload: ${formatServerUpload(summary)}`,
         `Quality sync: ${formatQualityUpload(summary)}`,
         `Top distraction: ${summary.topDistractedDomain || "none"}`
-    ].join("\n");
+    ];
+
+    if (summary.reviewNote) {
+        lines.push(`Review note: ${summary.reviewNote}`);
+    }
+
+    return lines.join("\n");
 }
 
 function formatServerUpload(summary) {
@@ -175,10 +188,59 @@ function getSubjectWebsites(subject, settings = currentSettings) {
     return Array.isArray(websites) ? websites : [];
 }
 
+function getSubjectTopics(subject, settings = currentSettings) {
+    const subjectTopics = settings?.syncedSubjectTopics || {};
+    const cleanSubject = String(subject || "").trim().toLowerCase();
+    const topics = subjectTopics[cleanSubject];
+
+    return Array.isArray(topics) ? topics : [];
+}
+
 function renderFocusWebsitesForSubject(subject) {
     const websites = getSubjectWebsites(subject);
 
     allowedDomains.value = websites.join("\n");
+}
+
+function hideFocusReviewPanel() {
+    if (focusReviewPanel) {
+        focusReviewPanel.hidden = true;
+    }
+}
+
+function showFocusReviewPanel(summary) {
+    if (!focusReviewPanel || !summary?.completedAt) {
+        return;
+    }
+
+    const topics = getSubjectTopics(summary.subject);
+
+    focusReviewTopic.replaceChildren();
+
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "No topic";
+    focusReviewTopic.append(emptyOption);
+
+    topics.forEach((topic) => {
+        const option = document.createElement("option");
+        option.value = topic;
+        option.textContent = topic;
+        focusReviewTopic.append(option);
+    });
+
+    focusReviewTopic.value = topics.includes(summary.topic) ? summary.topic : "";
+    focusReviewNote.value = summary.reviewNote || "";
+    focusReviewPanel.dataset.completedAt = summary.completedAt;
+    focusReviewPanel.hidden = false;
+}
+
+function showPendingFocusReviewIfNeeded(summary) {
+    if (summary?.reviewPending) {
+        showFocusReviewPanel(summary);
+    } else {
+        hideFocusReviewPanel();
+    }
 }
 
 function renderTodaySessions(settings = currentSettings) {
@@ -304,17 +366,24 @@ function renderFocusHistory(history) {
     recentHistory.forEach((session) => {
         const item = document.createElement("div");
         const subject = document.createElement("span");
+        const topic = document.createElement("span");
         const score = document.createElement("strong");
         const focused = document.createElement("span");
         const topDistraction = document.createElement("span");
+        const note = document.createElement("span");
 
         item.className = "history-item";
         subject.textContent = `Subject: ${session.subject || "unknown"}`;
+        topic.textContent = `Topic: ${session.topic || "none"}`;
         score.textContent = `${session.score}%`;
         focused.textContent = `${formatSeconds(session.focusedSeconds)} focused`;
         topDistraction.textContent = `Top distraction: ${session.topDistractedDomain || "none"}`;
+        note.textContent = session.reviewNote ? `Note: ${session.reviewNote}` : "";
 
-        item.append(subject, score, focused, topDistraction);
+        item.append(subject, topic, score, focused, topDistraction);
+        if (session.reviewNote) {
+            item.append(note);
+        }
         focusHistory.append(item);
     });
 }
@@ -520,6 +589,7 @@ async function loadSettings() {
         renderCompletedSummary(state.settings.lastCompletedFocusSession);
         renderFocusHistory(state.settings.focusHistory);
         renderTodoList(state.settings.todoItems);
+        showPendingFocusReviewIfNeeded(state.settings.lastCompletedFocusSession);
         renderAccount(currentSettings);
     } catch (error) {
         console.error(error);
@@ -565,6 +635,7 @@ async function loginToServer() {
     renderCompletedSummary(currentSettings.lastCompletedFocusSession);
     renderFocusHistory(currentSettings.focusHistory);
     renderTodoList(currentSettings.todoItems);
+    showPendingFocusReviewIfNeeded(currentSettings.lastCompletedFocusSession);
     renderAccount(currentSettings);
     statusText.textContent = currentSettings.syncedSubjects.length > 0
         ? "Logged in."
@@ -581,6 +652,7 @@ async function logoutFromServer() {
         serverToken: "",
         syncedSubjects: [],
         syncedSubjectWebsites: {},
+        syncedSubjectTopics: {},
         syncedTimetable: [],
         focusSubject: "",
         selectedFocusSubject: "",
@@ -595,6 +667,7 @@ async function logoutFromServer() {
     renderCompletedSummary(null);
     renderFocusHistory([]);
     renderTodoList([]);
+    hideFocusReviewPanel();
     renderAccount(currentSettings);
     statusText.textContent = "Logged out.";
     showPopupTab("account");
@@ -618,6 +691,7 @@ async function refreshSubjects() {
         ...currentSettings,
         syncedSubjects: result.subjects || [],
         syncedSubjectWebsites: result.subjectWebsites || {},
+        syncedSubjectTopics: result.subjectTopics || {},
         syncedTimetable: result.timetable || [],
         todoItems: result.todoItems || currentSettings.todoItems || [],
         selectedFocusSubject: result.selectedFocusSubject || ""
@@ -632,8 +706,9 @@ async function refreshSubjects() {
     renderTodoList(currentSettings.todoItems);
     const timetableCount = Array.isArray(result.timetable) ? result.timetable.length : 0;
     const todoCount = cleanTodoItems(currentSettings.todoItems).length;
+    const topicSetCount = Object.keys(currentSettings.syncedSubjectTopics || {}).length;
     statusText.textContent = currentSettings.syncedSubjects.length > 0
-        ? `Subjects refreshed. ${timetableCount} timetable reminders scheduled. ${todoCount} todo task(s) synced.`
+        ? `Subjects refreshed. ${topicSetCount} topic set(s), ${timetableCount} timetable reminder(s), ${todoCount} todo task(s) synced.`
         : "No synced subjects yet.";
 }
 
@@ -787,6 +862,7 @@ async function startFocus() {
     });
 
     renderFocusSummary(summary);
+    hideFocusReviewPanel();
     statusText.textContent = pomodoroEnabledInput.checked
         ? "Pomodoro started. Work blocks upload every 50 minutes."
         : "Focus started.";
@@ -827,6 +903,59 @@ async function stopFocus() {
         : `Quality failed: ${summary.qualityUpload?.error || "Unknown error."}`;
 
     statusText.textContent = `Focus stopped. ${leaderboardStatus}. ${qualityStatus}.`;
+    showFocusReviewPanel(summary);
+}
+
+async function saveFocusReview() {
+    if (!(await requireLogin())) {
+        return;
+    }
+
+    const completedAt = focusReviewPanel?.dataset.completedAt || "";
+
+    if (!completedAt) {
+        statusText.textContent = "Stop a focus session first.";
+        return;
+    }
+
+    const result = await chrome.runtime.sendMessage({
+        type: "saveFocusReview",
+        completedAt,
+        topic: focusReviewTopic.value,
+        reviewNote: focusReviewNote.value
+    });
+
+    if (result?.summary) {
+        latestCompletedFocusSession = result.summary;
+        renderCompletedSummary(result.summary);
+        const state = await chrome.runtime.sendMessage({
+            type: "getCompanionState"
+        });
+        renderFocusHistory(state.settings.focusHistory);
+    }
+
+    hideFocusReviewPanel();
+
+    if (!result?.ok) {
+        statusText.textContent = result?.error || "Review saved locally, but sync failed.";
+        return;
+    }
+
+    statusText.textContent = "Review synced.";
+}
+
+async function skipFocusReview() {
+    const completedAt = focusReviewPanel?.dataset.completedAt || "";
+
+    if (completedAt) {
+        await chrome.runtime.sendMessage({
+            type: "skipFocusReview",
+            completedAt
+        });
+    }
+
+    hideFocusReviewPanel();
+    statusText.textContent = "Review skipped.";
 }
 
 async function refreshFocusStatus() {
@@ -1020,6 +1149,8 @@ testButton.addEventListener("click", testNotification);
 refreshSubjectsButton.addEventListener("click", refreshSubjects);
 startFocusButton.addEventListener("click", startFocus);
 stopFocusButton.addEventListener("click", stopFocus);
+saveFocusReviewButton.addEventListener("click", saveFocusReview);
+skipFocusReviewButton.addEventListener("click", skipFocusReview);
 copySummaryButton.addEventListener("click", copySummary);
 copyJsonButton.addEventListener("click", copySummaryJson);
 clearHistoryButton.addEventListener("click", clearFocusHistory);

@@ -589,6 +589,7 @@ async function uploadAndStoreCompletedSummary(completedSummary, settings) {
 
     const completedSummaryWithUpload = {
         ...completedSummary,
+        reviewPending: true,
         serverUpload,
         qualityUpload
     };
@@ -629,6 +630,7 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
 
     let updatedSummary = {
         ...matchedSummary,
+        reviewPending: false,
         topic: cleanTopic || undefined,
         reviewNote: cleanReviewNote || undefined
     };
@@ -681,6 +683,42 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
         ok: true,
         summary: updatedSummary
     };
+}
+
+async function skipFocusReview(completedAt) {
+    const settings = await getSettings();
+    const cleanCompletedAt = String(completedAt || "").trim();
+
+    if (!cleanCompletedAt) {
+        return { ok: false, error: "No completed focus session selected." };
+    }
+
+    const history = Array.isArray(settings.focusHistory) ? settings.focusHistory : [];
+    const lastCompletedFocusSession = (
+        settings.lastCompletedFocusSession?.completedAt === cleanCompletedAt
+            ? {
+                ...settings.lastCompletedFocusSession,
+                reviewPending: false
+            }
+            : settings.lastCompletedFocusSession
+    );
+    const focusHistory = history.map((session) => {
+        if (session.completedAt !== cleanCompletedAt) {
+            return session;
+        }
+
+        return {
+            ...session,
+            reviewPending: false
+        };
+    });
+
+    await chrome.storage.local.set({
+        lastCompletedFocusSession,
+        focusHistory
+    });
+
+    return { ok: true };
 }
 
 async function loginToServer(username, password) {
@@ -1528,6 +1566,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             } catch(error) {
                 return { ok: false, error: error.message || "Could not save focus websites." };
             }
+        }
+
+        if (message.type === "saveFocusReview") {
+            return await saveFocusReview(
+                message.completedAt || "",
+                message.topic || "",
+                message.reviewNote || ""
+            );
+        }
+
+        if (message.type === "skipFocusReview") {
+            return await skipFocusReview(message.completedAt || "");
         }
 
         if (message.type === "testNotification") {

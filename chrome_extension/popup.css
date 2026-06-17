@@ -214,6 +214,17 @@ h3 {
     font-weight: bold;
 }
 
+.review-panel {
+    margin-top: 12px;
+    padding: 10px;
+    border: 2px solid #d4bd95;
+    background: #fff8e8;
+}
+
+.review-panel h3 {
+    margin-top: 0;
+}
+
 .todo-editor {
     padding: 8px;
     border: 2px solid #d4bd95;
