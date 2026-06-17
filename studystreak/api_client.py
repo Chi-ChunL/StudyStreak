@@ -94,7 +94,16 @@ def signup_to_server(username: str, password: str, display_name: str | None = No
         raise_server_error("Server signup", response)
 
 
-def upload_focus_session(token: str, subject: str, minutes: int, website: str | None) -> None:
+def upload_focus_session(
+    token: str,
+    subject: str,
+    minutes: int,
+    website: str | None,
+    topic: str | None = None,
+    review_note: str | None = None,
+    completed_at: str | None = None,
+    source: str = "focus_cli",
+) -> None:
     #upload completed focus session
     try:
         response = requests.post(
@@ -106,8 +115,11 @@ def upload_focus_session(token: str, subject: str, minutes: int, website: str | 
                 "subject": subject,
                 "minutes": minutes,
                 "website": website,
+                "topic": topic,
+                "review_note": review_note,
+                "completed_at": completed_at,
                 "completed": True,
-                "source": "focus_cli",
+                "source": source,
             },
             timeout=10,
         )
@@ -117,6 +129,50 @@ def upload_focus_session(token: str, subject: str, minutes: int, website: str | 
 
     if response.status_code != 200:
         raise_server_error("Focus upload", response)
+
+
+def get_focus_sessions(token: str, source: str | None = None) -> list[dict]:
+    try:
+        response = requests.get(
+            f"{BASE_URL}/focus-sessions",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            params={
+                "source": source,
+            } if source else None,
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Focus session load", response)
+
+    data = response.json()
+
+    if not isinstance(data, list):
+        return []
+
+    return data
+
+
+def delete_focus_session(token: str, session_id: int) -> None:
+    try:
+        response = requests.delete(
+            f"{BASE_URL}/focus-sessions/{session_id}",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Focus session delete", response)
 
 
 def get_leaderboard(period="all") -> list[dict]:
@@ -255,6 +311,51 @@ def upload_subject_websites(token: str, subject_websites: dict[str, list[str]]) 
 
     if response.status_code != 200:
         raise_server_error("Subject website sync", response)
+
+
+def upload_subject_topics(token: str, subject_topics: dict[str, list[str]]) -> None:
+    try:
+        response = requests.put(
+            f"{BASE_URL}/subject-topics",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            json={
+                "subject_topics": subject_topics,
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Subject topic sync", response)
+
+
+def get_subject_topics(token: str) -> dict[str, list[str]]:
+    try:
+        response = requests.get(
+            f"{BASE_URL}/subject-topics",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+
+    except requests.RequestException as error:
+        raise ValueError(f"Could not connect to server at {BASE_URL}: {error}") from error
+
+    if response.status_code != 200:
+        raise_server_error("Subject topic load", response)
+
+    data = response.json()
+    subject_topics = data.get("subject_topics", {})
+
+    if not isinstance(subject_topics, dict):
+        return {}
+
+    return subject_topics
 
 
 def get_subject_websites(token: str) -> dict[str, list[str]]:

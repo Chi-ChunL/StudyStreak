@@ -27,7 +27,9 @@ from studystreak.storage import (
     get_utc_now_text,
     load_data,
     merge_focus_quality_sessions,
+    merge_cloud_focus_sessions,
     merge_subject_websites,
+    merge_subject_topics,
     merge_todo_items,
     protect_streak_today,
     repair_data,
@@ -47,12 +49,15 @@ from studystreak.auth_cache import (
 from studystreak.api_client import (
     login_to_server, 
     signup_to_server,
+    delete_focus_session,
     upload_focus_session, 
     get_leaderboard,
     check_server_status,
     get_profile_data,
+    get_focus_sessions,
     get_focus_quality_sessions,
     get_subject_websites,
+    get_subject_topics,
     get_todo_items,
     get_latest_package_version,
 )
@@ -68,6 +73,7 @@ from studystreak.paths import get_app_data_dir
 
 POMODORO_WORK_MINUTES = 50
 POMODORO_BREAK_MINUTES = 10
+NO_TOPIC_VALUE = "__no_topic__"
 
 SETUP_TOUR_STEPS = [
     {
@@ -214,6 +220,9 @@ def format_topic_list_text(topics):
 def get_topic_options(data, subject):
     topics = get_subject_topic_list(data, subject)
     return [(topic, topic) for topic in topics]
+
+def get_optional_topic_options(data, subject):
+    return [("No topic", NO_TOPIC_VALUE), *get_topic_options(data, subject)]
  
 def calculate_current_streak(data):
     study_dates = set(data.get("streak_days", []))
@@ -674,9 +683,10 @@ def get_session_options(data):
         topic = session.get("topic", "")
         minutes = session["minutes"]
         session_date = session["date"]
+        note_marker = " + note" if session.get("note") else ""
 
         subject_text = subject if topic == "" else f"{subject} / {topic}"
-        label = f"{session_date} - {subject_text} - {minutes} minutes"
+        label = f"{session_date} - {subject_text} - {minutes} min{note_marker}"
         options.append((label, str(index)))
  
     options.reverse()
@@ -1048,7 +1058,14 @@ def is_blank_select_value(value):
     return (
         value is None
         or value is False
-        or str(value).lower() in ["", "none", "null", "select.null", "select.blank"]
+        or str(value).lower() in [
+            "",
+            "none",
+            "null",
+            "select.null",
+            "select.blank",
+            NO_TOPIC_VALUE,
+        ]
     )
 
 def get_select_index(value):
@@ -1349,12 +1366,13 @@ class FocusSessionScreen(ModalScreen):
 
 
 class FocusSessionNoteScreen(ModalScreen):
-    def __init__(self, session_completed_at, subject, topic, minutes):
+    def __init__(self, session_completed_at, subject, topic, minutes, topic_options):
         super().__init__()
         self.session_completed_at = session_completed_at
         self.subject = subject
         self.topic = topic
         self.minutes = minutes
+        self.topic_options = [("No topic", NO_TOPIC_VALUE), *topic_options]
 
     def compose(self) -> ComposeResult:
         with Container(id="focus-note-modal"):
@@ -1363,18 +1381,31 @@ class FocusSessionNoteScreen(ModalScreen):
                 f"{self.subject} - {self.topic or 'No topic'} - {self.minutes} min",
                 id="focus-note-summary",
             )
+            yield Select(
+                options=self.topic_options,
+                id="focus-note-topic-select",
+                prompt="Choose topic (optional)",
+            )
             yield TextArea("", id="focus-note-input")
             with Horizontal(id="focus-note-button-row"):
-                yield Button("Save Note", id="save-focus-note-button")
+                yield Button("Save Review", id="save-focus-note-button")
                 yield Button("Skip", id="skip-focus-note-button")
 
     def on_mount(self):
+        topic_select = self.query_one("#focus-note-topic-select", Select)
+        topic_values = {str(value) for _, value in self.topic_options}
+
+        if self.topic and self.topic in topic_values:
+            topic_select.value = self.topic
+
         self.query_one("#focus-note-input", TextArea).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save-focus-note-button":
+            topic_value = self.query_one("#focus-note-topic-select", Select).value
+            topic = "" if is_blank_select_value(topic_value) else str(topic_value)
             note = self.query_one("#focus-note-input", TextArea).text.strip()
-            self.app.save_focus_session_note(self.session_completed_at, note)
+            self.app.save_focus_session_note(self.session_completed_at, note, topic)
             self.app.pop_screen()
             return
 
@@ -1555,36 +1586,64 @@ class StudyStreakApp(App):
                 with TabPane("Subjects", id="subject-stats-tab"):
                     yield Static("", id="subject-stats")
  
-                with TabPane("Log Session", id="log-tab"):
-                    yield Static("Log your study session below.", id="log-title")
- 
-                    yield Select(
-                        options=[],
-                        id="subject-select",
-                        prompt="Choose a subject",
-                    )
- 
-                    yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
- 
-                    with Horizontal(id="button-row"):
-                        yield Button("Log Session", id="log-button")
-                        yield Button("Clear", id="clear-button")
- 
-                    yield Static("", id="message")
- 
-                with TabPane("Logs", id="manage-tab"):
-                    yield Static("Select a study session to delete.", id="manage-title")
- 
-                    yield Select(
-                        options=[],
-                        id="session-select",
-                        prompt="Choose a session",
-                    )
- 
-                    with Horizontal(id="manage-button-row"):
-                        yield Button("Delete Selected", id="delete-selected-button")
- 
-                    yield Static("", id="manage-message")
+                with TabPane("Sessions", id="log-tab"):
+                    yield Static("Sessions", id="sessions-title")
+
+                    with Horizontal(id="sessions-layout"):
+                        with Vertical(id="sessions-sidebar"):
+                            yield Button("Log Session", id="sessions-log-tab-button")
+                            yield Button("Edit Logs", id="sessions-manage-tab-button")
+
+                        with Vertical(id="sessions-content"):
+                            with Vertical(id="log-session-panel"):
+                                yield Static("Log a study session.", id="log-title")
+
+                                yield Select(
+                                    options=[],
+                                    id="subject-select",
+                                    prompt="Choose a subject",
+                                )
+
+                                yield Select(
+                                    options=[],
+                                    id="log-topic-select",
+                                    prompt="Topic (optional)",
+                                )
+
+                                yield Input(placeholder="Minutes, e.g. 30", id="minutes-input")
+                                yield TextArea("", id="manual-session-note-input")
+
+                                with Horizontal(id="button-row"):
+                                    yield Button("Log Session", id="log-button")
+                                    yield Button("Clear", id="clear-button")
+
+                                yield Static("", id="message")
+
+                            with Vertical(id="manage-session-panel"):
+                                yield Static("Edit a study session.", id="manage-title")
+
+                                yield Select(
+                                    options=[],
+                                    id="session-select",
+                                    prompt="Choose a session",
+                                )
+
+                                yield Static("Choose a session to see its details.", id="session-details-preview")
+
+                                yield Select(
+                                    options=[],
+                                    id="edit-session-subject-select",
+                                    prompt="Subject",
+                                )
+                                yield Input(placeholder="Minutes", id="edit-session-minutes-input")
+                                yield Input(placeholder="Topic (optional)", id="edit-session-topic-input")
+                                yield TextArea("", id="edit-session-note-input")
+
+                                with Horizontal(id="manage-button-row"):
+                                    yield Button("Save Changes", id="save-session-edit-button")
+                                    yield Button("Delete Selected", id="delete-selected-button")
+
+                                yield Static("", id="manage-message")
 
                 with TabPane("Timetable", id="timetable-tab"):
                     yield Static("Weekly study timetable", id="timetable-title")
@@ -1933,6 +1992,9 @@ class StudyStreakApp(App):
         focus_import_panel = self.query_one("#focus-import-panel")
         focus_import_panel.display = False
 
+        manage_session_panel = self.query_one("#manage-session-panel")
+        manage_session_panel.display = False
+
         self.apply_theme()
         self.hide_all_temp_messages()
         self.try_remembered_login()
@@ -1952,6 +2014,8 @@ class StudyStreakApp(App):
         subject_stats = self.query_one("#subject-stats", Static)
         session_select = self.query_one("#session-select", Select)
         subject_select = self.query_one("#subject-select", Select)
+        log_topic_select = self.query_one("#log-topic-select", Select)
+        edit_session_subject_select = self.query_one("#edit-session-subject-select", Select)
         focus_subject_select = self.query_one("#focus-subject-select", Select)
         focus_topic_select = self.query_one("#focus-topic-select", Select)
         weekly_goal_input = self.query_one("#weekly-goal-input", Input)
@@ -2004,6 +2068,13 @@ class StudyStreakApp(App):
  
         subject_select.set_options(get_subject_options(data))
         subject_select.clear()
+
+        log_topic_select.set_options([])
+        log_topic_select.clear()
+
+        edit_session_subject_select.set_options(get_subject_options(data))
+        edit_session_subject_select.clear()
+        self.clear_session_edit_form()
  
         focus_subject_select.set_options(get_subject_options(data))
         focus_subject_select.clear()
@@ -2847,6 +2918,10 @@ class StudyStreakApp(App):
                     server_token,
                     str(subject).lower(),
                     minutes,
+                    clean_topic,
+                    completed_at,
+                    None,
+                    "focus_cli",
                 ),
                 thread=True,
                 group="focus-upload",
@@ -2951,10 +3026,20 @@ class StudyStreakApp(App):
                 completed_subject,
                 completed_topic,
                 completed_minutes,
+                get_topic_options(load_data(), completed_subject),
             )
         )
 
-    def upload_focus_session_in_background(self, token, subject, minutes):
+    def upload_focus_session_in_background(
+        self,
+        token,
+        subject,
+        minutes,
+        topic="",
+        completed_at=None,
+        review_note=None,
+        source="focus_cli",
+    ):
         #avoid freezing the UI when the server is slow or offline
         try:
             upload_focus_session(
@@ -2962,6 +3047,10 @@ class StudyStreakApp(App):
                 subject=subject,
                 minutes=minutes,
                 website=None,
+                topic=topic or None,
+                completed_at=completed_at,
+                review_note=review_note or None,
+                source=source,
             )
         except ValueError:
             self.call_from_thread(
@@ -3010,24 +3099,115 @@ class StudyStreakApp(App):
 
         self.show_temp_message("#focus-message", "[yellow]Focus session cancelled. No study time was logged.[/yellow]")
 
-    def save_focus_session_note(self, session_completed_at, note):
+    def save_focus_session_note(self, session_completed_at, note, topic=None):
         clean_note = str(note).strip()
+        clean_topic = str(topic or "").strip()
 
-        if clean_note == "":
-            self.show_temp_message("#focus-message", "[yellow]No note saved.[/yellow]")
+        if clean_note == "" and clean_topic == "":
+            self.show_temp_message("#focus-message", "[yellow]No review saved.[/yellow]")
             return
 
         data = load_data()
 
         for session in reversed(data.get("sessions", [])):
             if session.get("completed_at") == session_completed_at:
-                session["note"] = clean_note
+                if clean_note:
+                    session["note"] = clean_note
+                else:
+                    session.pop("note", None)
+
+                if clean_topic:
+                    session["topic"] = clean_topic
+                else:
+                    session.pop("topic", None)
+
                 save_data(data)
                 self.update_dashboard()
-                self.show_temp_message("#focus-message", "[green]Session note saved.[/green]")
+
+                server_token = get_server_token()
+
+                if server_token is not None:
+                    upload_source = (
+                        "chrome_extension"
+                        if session.get("source") == "chrome_extension"
+                        else "focus_cli"
+                    )
+                    self.run_worker(
+                        partial(
+                            self.upload_focus_session_in_background,
+                            server_token,
+                            session.get("subject", "unknown"),
+                            int(session.get("minutes", 0) or 0),
+                            session.get("topic", ""),
+                            session.get("completed_at"),
+                            session.get("note", ""),
+                            upload_source,
+                        ),
+                        thread=True,
+                        group="focus-upload",
+                    )
+
+                self.show_temp_message("#focus-message", "[green]Session review saved.[/green]")
                 return
 
         self.show_temp_message("#focus-message", "[red]Could not find that session to save the note.[/red]")
+
+    def show_sessions_panel(self, panel_name):
+        log_panel = self.query_one("#log-session-panel")
+        manage_panel = self.query_one("#manage-session-panel")
+
+        log_panel.display = panel_name == "log"
+        manage_panel.display = panel_name == "manage"
+
+    def clear_session_edit_form(self):
+        self.query_one("#session-details-preview", Static).update(
+            "Choose a session to see its details."
+        )
+        self.query_one("#edit-session-minutes-input", Input).value = ""
+        self.query_one("#edit-session-topic-input", Input).value = ""
+        self.query_one("#edit-session-note-input", TextArea).load_text("")
+
+    def populate_session_edit_form(self, selected_index):
+        data = load_data()
+        index = get_select_index(selected_index)
+
+        if index is None or index < 0 or index >= len(data.get("sessions", [])):
+            self.clear_session_edit_form()
+            return
+
+        session = data["sessions"][index]
+        subject = str(session.get("subject", "")).lower()
+        topic = str(session.get("topic", "")).strip()
+        note = str(session.get("note", "")).strip()
+        minutes = int(session.get("minutes", 0) or 0)
+        session_date = session.get("date", "unknown date")
+        source = session.get("source", "manual")
+
+        subject_select = self.query_one("#edit-session-subject-select", Select)
+
+        if subject:
+            subject_select.value = subject
+
+        self.query_one("#edit-session-minutes-input", Input).value = str(minutes)
+        self.query_one("#edit-session-topic-input", Input).value = topic
+        self.query_one("#edit-session-note-input", TextArea).load_text(note)
+
+        preview_lines = [
+            f"[bold]{session_date}[/bold]",
+            f"Subject: {subject or 'unknown'}",
+            f"Minutes: {minutes}",
+            f"Topic: {topic or 'none'}",
+            f"Note: {note or 'none'}",
+            f"Source: {source}",
+        ]
+
+        self.query_one("#session-details-preview", Static).update("\n".join(preview_lines))
+
+    def delete_focus_session_in_background(self, token, cloud_session_id):
+        try:
+            delete_focus_session(token, int(cloud_session_id))
+        except (TypeError, ValueError):
+            return
 
     def on_select_changed(self, event: Select.Changed) -> None:
         data = load_data()
@@ -3066,6 +3246,24 @@ class StudyStreakApp(App):
             saved_topics = get_subject_topic_list(data, selected_subject)
             edit_website_input.load_text(format_website_list_text(saved_websites))
             edit_topic_input.load_text(format_topic_list_text(saved_topics))
+            return
+
+        if event.select.id == "subject-select":
+            selected_subject = event.value
+            log_topic_select = self.query_one("#log-topic-select", Select)
+
+            if is_blank_select_value(selected_subject):
+                log_topic_select.set_options([])
+                log_topic_select.clear()
+                return
+
+            log_topic_select.set_options(get_optional_topic_options(data, selected_subject))
+            log_topic_select.clear()
+            return
+
+        if event.select.id == "session-select":
+            self.populate_session_edit_form(event.value)
+            return
     
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if self.suppress_next_tab_sound:
@@ -3118,7 +3316,9 @@ class StudyStreakApp(App):
                 cloud_data,
             )
             self.sync_subject_websites_from_server(server_token)
+            self.sync_subject_topics_from_server(server_token)
             self.sync_todo_items_from_server(server_token)
+            self.sync_browser_focus_sessions_from_server(server_token)
             self.sync_focus_quality_from_server(server_token)
 
         except ValueError:
@@ -3238,6 +3438,45 @@ class StudyStreakApp(App):
         updated_count = merge_subject_websites(data, server_subject_websites)
 
         if updated_count > 0:
+            save_data(data)
+
+        return {
+            "updates": updated_count,
+        }
+
+    def sync_subject_topics_from_server(self, token=None):
+        token = token or get_server_token()
+
+        if token is None:
+            return {
+                "updates": 0,
+            }
+
+        server_subject_topics = get_subject_topics(token)
+        data = load_data()
+        updated_count = merge_subject_topics(data, server_subject_topics)
+
+        if updated_count > 0:
+            save_data(data)
+
+        return {
+            "updates": updated_count,
+        }
+
+    def sync_browser_focus_sessions_from_server(self, token=None):
+        token = token or get_server_token()
+
+        if token is None:
+            return {
+                "updates": 0,
+            }
+
+        server_sessions = get_focus_sessions(token, source="chrome_extension")
+        data = load_data()
+        updated_count = merge_cloud_focus_sessions(data, server_sessions)
+
+        if updated_count > 0:
+            protect_streak_today(data)
             save_data(data)
 
         return {
@@ -3898,7 +4137,9 @@ class StudyStreakApp(App):
                         cloud_data,
                     )
                     self.sync_subject_websites_from_server(server_token)
+                    self.sync_subject_topics_from_server(server_token)
                     self.sync_todo_items_from_server(server_token)
+                    self.sync_browser_focus_sessions_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
 
                 except ValueError:
@@ -3939,7 +4180,9 @@ class StudyStreakApp(App):
                     prefer_cloud_when_equal=True,
                 )
                 self.sync_subject_websites_from_server(server_token)
+                self.sync_subject_topics_from_server(server_token)
                 self.sync_todo_items_from_server(server_token)
+                self.sync_browser_focus_sessions_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
                 self.show_temp_message(
@@ -3999,7 +4242,9 @@ class StudyStreakApp(App):
                 set_server_token(server_token)
                 save_data(private_data)
                 self.sync_subject_websites_from_server(server_token)
+                self.sync_subject_topics_from_server(server_token)
                 self.sync_todo_items_from_server(server_token)
+                self.sync_browser_focus_sessions_from_server(server_token)
                 self.sync_focus_quality_from_server(server_token)
 
             except ValueError as signup_error:
@@ -4008,7 +4253,9 @@ class StudyStreakApp(App):
                     set_server_token(server_token)
                     save_data(private_data)
                     self.sync_subject_websites_from_server(server_token)
+                    self.sync_subject_topics_from_server(server_token)
                     self.sync_todo_items_from_server(server_token)
+                    self.sync_browser_focus_sessions_from_server(server_token)
                     self.sync_focus_quality_from_server(server_token)
                     cloud_message = "[green]Account created and linked to existing cloud login.[/green]"
 
@@ -4102,7 +4349,9 @@ class StudyStreakApp(App):
         if event.button.id == "sync-now-button":
             try:
                 subject_sync_result = self.sync_subject_websites_from_server()
+                subject_topic_sync_result = self.sync_subject_topics_from_server()
                 todo_sync_result = self.sync_todo_items_from_server()
+                browser_session_sync_result = self.sync_browser_focus_sessions_from_server()
                 data = load_data()
                 save_data(data)
                 sync_result = self.sync_focus_quality_from_server()
@@ -4112,11 +4361,19 @@ class StudyStreakApp(App):
                 return
 
             subject_website_updates = subject_sync_result["updates"]
+            subject_topic_updates = subject_topic_sync_result["updates"]
             todo_updates = todo_sync_result["updates"]
+            browser_session_updates = browser_session_sync_result["updates"]
             added_count = sync_result["updates"]
             streak_protected = sync_result["streak_protected"]
             self.update_sync_status()
-            if added_count > 0 or subject_website_updates > 0 or todo_updates > 0:
+            if (
+                added_count > 0
+                or subject_website_updates > 0
+                or subject_topic_updates > 0
+                or todo_updates > 0
+                or browser_session_updates > 0
+            ):
                 self.update_dashboard()
                 achievement_unlocked = self.unlock_earned_achievements()
                 if streak_protected:
@@ -4138,6 +4395,12 @@ class StudyStreakApp(App):
 
                 if subject_website_updates > 0:
                     message_parts.append(f"{subject_website_updates} subject website set(s)")
+
+                if subject_topic_updates > 0:
+                    message_parts.append(f"{subject_topic_updates} subject topic set(s)")
+
+                if browser_session_updates > 0:
+                    message_parts.append(f"{browser_session_updates} browser session log(s)")
 
                 if todo_updates > 0:
                     message_parts.append(f"{todo_updates} todo update(s)")
@@ -4183,14 +4446,27 @@ class StudyStreakApp(App):
             subject_edit_panel.display = False
             subject_delete_panel.display = True
             return
+
+        if event.button.id == "sessions-log-tab-button":
+            self.show_sessions_panel("log")
+            return
+
+        if event.button.id == "sessions-manage-tab-button":
+            self.show_sessions_panel("manage")
+            return
  
         if event.button.id == "clear-button":
             subject_select = self.query_one("#subject-select", Select)
+            log_topic_select = self.query_one("#log-topic-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)
+            note_input = self.query_one("#manual-session-note-input", TextArea)
             message = self.query_one("#message", Static)
  
             subject_select.clear()
+            log_topic_select.set_options([])
+            log_topic_select.clear()
             minutes_input.value = ""
+            note_input.load_text("")
             message.update("")
             message.display = False
             return
@@ -4219,6 +4495,20 @@ class StudyStreakApp(App):
  
             deleted_session = data["sessions"].pop(selected_index)
             save_data(data)
+
+            server_token = get_server_token()
+            cloud_session_id = deleted_session.get("cloud_focus_session_id")
+
+            if server_token is not None and cloud_session_id is not None:
+                self.run_worker(
+                    partial(
+                        self.delete_focus_session_in_background,
+                        server_token,
+                        cloud_session_id,
+                    ),
+                    thread=True,
+                    group="focus-delete",
+                )
  
             subject = deleted_session["subject"]
             minutes = deleted_session["minutes"]
@@ -4230,6 +4520,89 @@ class StudyStreakApp(App):
                 "#manage-message",
                 f"[yellow]Deleted: {session_date} - {subject} - {minutes} minutes.[/yellow]",
             )
+            return
+
+        if event.button.id == "save-session-edit-button":
+            session_select = self.query_one("#session-select", Select)
+            subject_select = self.query_one("#edit-session-subject-select", Select)
+            minutes_input = self.query_one("#edit-session-minutes-input", Input)
+            topic_input = self.query_one("#edit-session-topic-input", Input)
+            note_input = self.query_one("#edit-session-note-input", TextArea)
+
+            selected_index = get_select_index(session_select.value)
+
+            if selected_index is None:
+                self.show_temp_message("#manage-message", "[yellow]Please select a session to edit.[/yellow]")
+                return
+
+            data = load_data()
+
+            if selected_index < 0 or selected_index >= len(data["sessions"]):
+                self.show_temp_message("#manage-message", "[red]Selected session could not be found.[/red]")
+                self.update_dashboard()
+                return
+
+            subject = subject_select.value
+            minutes_text = minutes_input.value.strip()
+            topic = topic_input.value.strip()
+            note = note_input.text.strip()
+
+            if is_blank_select_value(subject):
+                self.show_temp_message("#manage-message", "[red]Please choose a subject.[/red]")
+                return
+
+            if not minutes_text.isdigit():
+                self.show_temp_message("#manage-message", "[red]Minutes must be a whole number.[/red]")
+                return
+
+            minutes = int(minutes_text)
+
+            if minutes <= 0:
+                self.show_temp_message("#manage-message", "[red]Minutes must be more than 0.[/red]")
+                return
+
+            session = data["sessions"][selected_index]
+            session["subject"] = str(subject).lower()
+            session["minutes"] = minutes
+
+            if topic:
+                session["topic"] = topic
+            else:
+                session.pop("topic", None)
+
+            if note:
+                session["note"] = note
+            else:
+                session.pop("note", None)
+
+            save_data(data)
+
+            server_token = get_server_token()
+
+            if server_token is not None and session.get("completed_at"):
+                upload_source = (
+                    "chrome_extension"
+                    if session.get("source") == "chrome_extension"
+                    else "focus_cli"
+                )
+                self.run_worker(
+                    partial(
+                        self.upload_focus_session_in_background,
+                        server_token,
+                        session["subject"],
+                        minutes,
+                        session.get("topic", ""),
+                        session.get("completed_at"),
+                        session.get("note", ""),
+                        upload_source,
+                    ),
+                    thread=True,
+                    group="focus-upload",
+                )
+
+            self.update_dashboard()
+            self.show_sessions_panel("manage")
+            self.show_temp_message("#manage-message", "[green]Session updated.[/green]")
             return
  
         if event.button.id == "save-goal-button":
@@ -4746,11 +5119,16 @@ class StudyStreakApp(App):
 
         if event.button.id == "log-button":
             subject_select = self.query_one("#subject-select", Select)
+            topic_select = self.query_one("#log-topic-select", Select)
             minutes_input = self.query_one("#minutes-input", Input)
+            note_input = self.query_one("#manual-session-note-input", TextArea)
             message = self.query_one("#message", Static)
  
             subject = subject_select.value
+            topic_value = topic_select.value
+            topic = "" if is_blank_select_value(topic_value) else str(topic_value)
             minutes_text = minutes_input.value.strip()
+            note = note_input.text.strip()
  
 
             if is_blank_select_value(subject):
@@ -4779,7 +5157,14 @@ class StudyStreakApp(App):
                 "minutes": minutes,
                 "date": str(date.today()),
                 "source": "manual",
+                "completed_at": get_utc_now_text(),
             }
+
+            if topic:
+                session["topic"] = topic
+
+            if note:
+                session["note"] = note
  
             data["sessions"].append(session)
             protect_streak_today(data)
@@ -4797,5 +5182,8 @@ class StudyStreakApp(App):
             self.show_temp_message("#message", f"[green]Logged {minutes} minutes of {subject} study.[/green]")
  
             subject_select.clear()
+            topic_select.set_options([])
+            topic_select.clear()
             minutes_input.value = ""
+            note_input.load_text("")
             return

@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = {
     selectedFocusSubject: "",
     syncedSubjects: [],
     syncedSubjectWebsites: {},
+    syncedSubjectTopics: {},
     syncedTimetable: [],
     serverUsername: "",
     serverToken: "",
@@ -100,6 +101,7 @@ async function getSettings() {
         )
             ? saved.syncedSubjectWebsites
             : {},
+        syncedSubjectTopics: cleanSubjectTopicMap(saved.syncedSubjectTopics),
         syncedTimetable: Array.isArray(saved.syncedTimetable)
             ? saved.syncedTimetable
             : [],
@@ -188,6 +190,31 @@ function cleanSubjectWebsiteMap(subjectWebsites) {
     return cleaned;
 }
 
+function cleanSubjectTopicMap(subjectTopics) {
+    const cleaned = {};
+
+    if (!subjectTopics || typeof subjectTopics !== "object" || Array.isArray(subjectTopics)) {
+        return cleaned;
+    }
+
+    Object.entries(subjectTopics).forEach(([subject, topics]) => {
+        const cleanSubject = String(subject || "").trim().toLowerCase();
+        const topicList = Array.isArray(topics) ? topics : [topics];
+
+        if (!cleanSubject) {
+            return;
+        }
+
+        cleaned[cleanSubject] = topicList
+            .map((topic) => String(topic || "").trim())
+            .filter(Boolean)
+            .filter((topic, index, list) => list.indexOf(topic) === index)
+            .slice(0, 30);
+    });
+
+    return cleaned;
+}
+
 function cleanTimetableList(timetable) {
     const validDays = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
 
@@ -245,6 +272,22 @@ async function fetchSubjectWebsitesFromServer(token) {
     }
 
     return cleanSubjectWebsiteMap(data.subject_websites);
+}
+
+async function fetchSubjectTopicsFromServer(token) {
+    const response = await fetch(`${API_BASE_URL}/subject-topics`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(getServerErrorMessage(data));
+    }
+
+    return cleanSubjectTopicMap(data.subject_topics);
 }
 
 async function fetchTodoItemsFromServer(token) {
@@ -342,6 +385,7 @@ async function refreshSubjectsFromServer() {
 
     const subjects = await fetchSubjectsFromServer(settings.serverToken);
     const subjectWebsites = await fetchSubjectWebsitesFromServer(settings.serverToken);
+    const subjectTopics = await fetchSubjectTopicsFromServer(settings.serverToken);
     const timetable = await fetchTimetableFromServer(settings.serverToken);
     const todoItems = await fetchTodoItemsFromServer(settings.serverToken);
     const selectedFocusSubject = getSelectedSubjectForList(
@@ -352,6 +396,7 @@ async function refreshSubjectsFromServer() {
     await chrome.storage.local.set({
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
+        syncedSubjectTopics: subjectTopics,
         syncedTimetable: timetable,
         todoItems,
         selectedFocusSubject
@@ -363,6 +408,7 @@ async function refreshSubjectsFromServer() {
         ok: true,
         subjects,
         subjectWebsites,
+        subjectTopics,
         timetable,
         todoItems,
         selectedFocusSubject
@@ -455,6 +501,9 @@ async function uploadCompletedFocusSession(summary, token) {
             subject: summary.subject,
             minutes,
             website: null,
+            topic: summary.topic || null,
+            review_note: summary.reviewNote || null,
+            completed_at: summary.completedAt || null,
             completed: true,
             source: "chrome_extension"
         })
@@ -557,6 +606,83 @@ async function uploadAndStoreCompletedSummary(completedSummary, settings) {
     return completedSummaryWithUpload;
 }
 
+async function saveFocusReview(completedAt, topic, reviewNote) {
+    const settings = await getSettings();
+    const cleanCompletedAt = String(completedAt || "").trim();
+    const cleanTopic = String(topic || "").trim().slice(0, 80);
+    const cleanReviewNote = String(reviewNote || "").trim().slice(0, 1000);
+
+    if (!cleanCompletedAt) {
+        return { ok: false, error: "No completed focus session selected." };
+    }
+
+    const history = Array.isArray(settings.focusHistory) ? settings.focusHistory : [];
+    const matchedSummary = (
+        settings.lastCompletedFocusSession?.completedAt === cleanCompletedAt
+            ? settings.lastCompletedFocusSession
+            : history.find((session) => session.completedAt === cleanCompletedAt)
+    );
+
+    if (!matchedSummary) {
+        return { ok: false, error: "Could not find that focus session." };
+    }
+
+    let updatedSummary = {
+        ...matchedSummary,
+        topic: cleanTopic || undefined,
+        reviewNote: cleanReviewNote || undefined
+    };
+
+    try {
+        updatedSummary = {
+            ...updatedSummary,
+            serverUpload: await uploadCompletedFocusSession(updatedSummary, settings.serverToken)
+        };
+    } catch (error) {
+        updatedSummary = {
+            ...updatedSummary,
+            serverUpload: {
+                ok: false,
+                error: error.message || "Review sync failed."
+            }
+        };
+    }
+
+    const nextHistory = history.map((session) => {
+        if (session.completedAt !== cleanCompletedAt) {
+            return session;
+        }
+
+        return updatedSummary;
+    });
+
+    if (!nextHistory.some((session) => session.completedAt === cleanCompletedAt)) {
+        nextHistory.unshift(updatedSummary);
+    }
+
+    await chrome.storage.local.set({
+        lastCompletedFocusSession: (
+            settings.lastCompletedFocusSession?.completedAt === cleanCompletedAt
+                ? updatedSummary
+                : settings.lastCompletedFocusSession
+        ),
+        focusHistory: nextHistory.slice(0, 3)
+    });
+
+    if (!updatedSummary.serverUpload?.ok) {
+        return {
+            ok: false,
+            error: updatedSummary.serverUpload?.error || "Review saved locally, but sync failed.",
+            summary: updatedSummary
+        };
+    }
+
+    return {
+        ok: true,
+        summary: updatedSummary
+    };
+}
+
 async function loginToServer(username, password) {
     const cleanUsername = username.trim().toLowerCase();
     const previousSettings = await getSettings();
@@ -576,6 +702,7 @@ async function loginToServer(username, password) {
 
     let subjects = [];
     let subjectWebsites = {};
+    let subjectTopics = {};
     let timetable = [];
     let todoItems = [];
 
@@ -589,6 +716,12 @@ async function loginToServer(username, password) {
         subjectWebsites = await fetchSubjectWebsitesFromServer(data.access_token);
     } catch {
         subjectWebsites = {};
+    }
+
+    try {
+        subjectTopics = await fetchSubjectTopicsFromServer(data.access_token);
+    } catch {
+        subjectTopics = {};
     }
 
     try {
@@ -631,6 +764,7 @@ async function loginToServer(username, password) {
         serverToken: data.access_token,
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
+        syncedSubjectTopics: subjectTopics,
         syncedTimetable: timetable,
         todoItems: storedTodoItems,
         selectedFocusSubject,
@@ -668,6 +802,7 @@ async function loginToServer(username, password) {
         serverUsername: cleanUsername,
         subjects,
         subjectWebsites,
+        subjectTopics,
         timetable,
         todoItems: storedTodoItems,
         selectedFocusSubject
@@ -697,6 +832,7 @@ async function logoutFromServer() {
         todoItems: [],
         syncedSubjects: [],
         syncedSubjectWebsites: {},
+        syncedSubjectTopics: {},
         syncedTimetable: []
     });
 

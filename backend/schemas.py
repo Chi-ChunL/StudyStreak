@@ -21,8 +21,22 @@ class FocusSessionCreate(BaseModel):
     subject: str = Field(min_length=1, max_length=50)
     minutes: int = Field(gt=0, le=180)
     website: str | None = None
+    topic: str | None = Field(default=None, max_length=80)
+    review_note: str | None = Field(default=None, max_length=1000)
+    completed_at: str | None = None
     completed: bool = True
     source: str = "focus_cli"
+
+class FocusSessionResponse(BaseModel):
+    id: int
+    subject: str
+    minutes: int
+    website: str | None = None
+    topic: str | None = None
+    review_note: str | None = None
+    completed_at: str | None = None
+    source: str
+    created_at: str
 
 class FocusQualitySessionCreate(BaseModel):
     subject: str = Field(min_length=1, max_length=50)
@@ -62,6 +76,9 @@ class SubjectList(BaseModel):
 
 class SubjectWebsiteList(BaseModel):
     subject_websites: dict[str, list[str]] = Field(default_factory=dict)
+
+class SubjectTopicList(BaseModel):
+    subject_topics: dict[str, list[str]] = Field(default_factory=dict)
 
 class TodoItem(BaseModel):
     id: str = Field(min_length=1, max_length=80)

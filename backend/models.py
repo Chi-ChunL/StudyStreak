@@ -18,6 +18,7 @@ class User(Base):
     encrypted_profile_data = Column(String, nullable=True)
     subjects_json = Column(String, nullable=True)
     subject_websites_json = Column(String, nullable=True)
+    subject_topics_json = Column(String, nullable=True)
     timetable_json = Column(String, nullable=True)
     todo_items_json = Column(String, nullable=True)
     current_streak = Column(Integer, default=0, nullable=False)
@@ -45,6 +46,9 @@ class FocusSession(Base):
     subject = Column(String, nullable=False)
     minutes = Column(Integer, nullable=False)
     website = Column(String, nullable=True)
+    topic = Column(String, nullable=True)
+    review_note = Column(String, nullable=True)
+    completed_at = Column(String, nullable=True)
 
     completed = Column(Boolean, default=True)
     source = Column(String, default="focus_cli")

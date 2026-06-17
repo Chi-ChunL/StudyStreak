@@ -21,6 +21,7 @@ from studystreak.profile_sync import encrypt_profile_data
 from studystreak.api_client import (
     upload_profile_data,
     upload_subject_websites,
+    upload_subject_topics,
     upload_subjects,
     upload_streak,
     upload_timetable,
@@ -270,6 +271,100 @@ def merge_todo_items(data, server_todo_items):
 
     return updates
 
+def merge_cloud_focus_sessions(data, server_sessions):
+    data = repair_data(data)
+
+    if not isinstance(server_sessions, list):
+        return 0
+
+    existing_by_id = {
+        str(session.get("cloud_focus_session_id")): session
+        for session in data.get("sessions", [])
+        if session.get("cloud_focus_session_id") is not None
+    }
+    updates = 0
+
+    for server_session in server_sessions:
+        if not isinstance(server_session, dict):
+            continue
+
+        cloud_id = str(server_session.get("id", "")).strip()
+
+        if not cloud_id:
+            continue
+
+        subject = str(server_session.get("subject", "")).strip().lower()
+        minutes = int(server_session.get("minutes", 0) or 0)
+
+        if not subject or minutes <= 0:
+            continue
+
+        completed_at = str(
+            server_session.get("completed_at")
+            or server_session.get("created_at")
+            or get_utc_now_text()
+        )
+        session_date = completed_at[:10]
+
+        try:
+            date.fromisoformat(session_date)
+        except ValueError:
+            session_date = get_today_text()
+
+        next_session = {
+            "subject": subject,
+            "minutes": minutes,
+            "date": session_date,
+            "source": str(server_session.get("source") or "chrome_extension"),
+            "completed_at": completed_at,
+            "cloud_focus_session_id": cloud_id,
+        }
+
+        topic = str(server_session.get("topic") or "").strip()
+        note = str(server_session.get("review_note") or "").strip()
+
+        if topic:
+            next_session["topic"] = topic
+
+        if note:
+            next_session["note"] = note
+
+        existing_session = existing_by_id.get(cloud_id)
+
+        if existing_session is None:
+            data["sessions"].append(next_session)
+            existing_by_id[cloud_id] = next_session
+            updates += 1
+            continue
+
+        changed = False
+
+        for key in [
+            "subject",
+            "minutes",
+            "date",
+            "source",
+            "completed_at",
+            "cloud_focus_session_id",
+            "topic",
+            "note",
+        ]:
+            if key in next_session:
+                if existing_session.get(key) != next_session[key]:
+                    existing_session[key] = next_session[key]
+                    changed = True
+            elif key in ["topic", "note"] and key in existing_session:
+                existing_session.pop(key, None)
+                changed = True
+
+        if changed:
+            updates += 1
+
+    if updates > 0:
+        data["sessions"].sort(key=lambda item: item.get("completed_at", item.get("date", "")))
+
+    return updates
+
 def merge_subject_websites(data, server_subject_websites):
     data = repair_data(data)
     server_subject_websites = clean_subject_websites(server_subject_websites)
@@ -285,6 +380,23 @@ def merge_subject_websites(data, server_subject_websites):
 
     data["subjects"].sort()
     data["subject_websites"] = clean_subject_websites(data["subject_websites"])
+    return changed_subjects
+
+def merge_subject_topics(data, server_subject_topics):
+    data = repair_data(data)
+    server_subject_topics = clean_subject_topics(server_subject_topics)
+    changed_subjects = 0
+
+    for subject, topics in server_subject_topics.items():
+        if subject not in data["subjects"]:
+            data["subjects"].append(subject)
+
+        if data["subject_topics"].get(subject, []) != topics:
+            data["subject_topics"][subject] = topics
+            changed_subjects += 1
+
+    data["subjects"].sort()
+    data["subject_topics"] = clean_subject_topics(data["subject_topics"])
     return changed_subjects
 
 def protect_streak_today(data):
@@ -814,6 +926,10 @@ def sync_profile_data(data):
             (
                 "Subject website upload",
                 lambda: upload_subject_websites(token, data.get("subject_websites", {})),
+            ),
+            (
+                "Subject topic upload",
+                lambda: upload_subject_topics(token, data.get("subject_topics", {})),
             ),
             ("Todo upload", lambda: upload_todo_items(token, data.get("todo_items", []))),
             ("Timetable upload", lambda: upload_timetable(token, data.get("timetable", []))),

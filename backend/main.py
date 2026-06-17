@@ -15,6 +15,7 @@ from backend.database import Base, engine, get_db
 from backend.models import FocusSession, User, FocusQualitySession
 from backend.schemas import(
     FocusSessionCreate,
+    FocusSessionResponse,
     LeaderboardEntry,
     ProfileDataResponse,
     ProfileDataUpdate,
@@ -22,6 +23,7 @@ from backend.schemas import(
     UserCreate,
     UserLogin,
     SubjectList,
+    SubjectTopicList,
     SubjectWebsiteList,
     TodoItemList,
     TimetableList,
@@ -54,6 +56,12 @@ with engine.connect() as connection:
         )
         connection.commit()
 
+    if "subject_topics_json" not in column_name:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN subject_topics_json TEXT")
+        )
+        connection.commit()
+
     if "timetable_json" not in column_name:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN timetable_json TEXT")
@@ -71,6 +79,20 @@ with engine.connect() as connection:
             text("ALTER TABLE users ADD COLUMN current_streak INTEGER DEFAULT 0 NOT NULL")
         )
         connection.commit()
+
+    focus_session_columns = connection.execute(text("PRAGMA table_info(focus_sessions)")).fetchall()
+    focus_session_column_names = [column[1] for column in focus_session_columns]
+
+    for column_name, column_type in [
+        ("topic", "TEXT"),
+        ("review_note", "TEXT"),
+        ("completed_at", "TEXT"),
+    ]:
+        if column_name not in focus_session_column_names:
+            connection.execute(
+                text(f"ALTER TABLE focus_sessions ADD COLUMN {column_name} {column_type}")
+            )
+            connection.commit()
 
 load_dotenv()
 
@@ -176,19 +198,98 @@ def create_focus_session(
     if not session_data.completed:
         raise HTTPException(status_code=400, detail="Only completed focus sessions count.")
 
-    focus_session = FocusSession(
-        user_id=current_user.id,
-        subject=session_data.subject.strip().lower(),
-        minutes=session_data.minutes,
-        website=session_data.website,
-        completed=session_data.completed,
-        source=session_data.source,
-    )
+    focus_session = None
 
-    db.add(focus_session)
+    if session_data.completed_at:
+        focus_session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == current_user.id,
+                FocusSession.source == session_data.source,
+                FocusSession.completed_at == session_data.completed_at,
+            )
+            .first()
+        )
+
+    if focus_session is None:
+        focus_session = FocusSession(user_id=current_user.id)
+        db.add(focus_session)
+
+    focus_session.subject = session_data.subject.strip().lower()
+    focus_session.minutes = session_data.minutes
+    focus_session.website = session_data.website
+    focus_session.topic = clean_optional_text(session_data.topic, 80)
+    focus_session.review_note = clean_optional_text(session_data.review_note, 1000)
+    focus_session.completed_at = clean_optional_text(session_data.completed_at, 80)
+    focus_session.completed = session_data.completed
+    focus_session.source = session_data.source
+
     db.commit()
 
     return {"message": "Focus session saved."}
+
+@app.get("/focus-sessions", response_model=list[FocusSessionResponse])
+def get_focus_sessions(
+    source: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == current_user.id,
+            FocusSession.completed.is_(True),
+        )
+    )
+
+    if source:
+        query = query.filter(FocusSession.source == source)
+
+    sessions = (
+        query
+        .order_by(FocusSession.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    return [
+        FocusSessionResponse(
+            id=session.id,
+            subject=session.subject,
+            minutes=session.minutes,
+            website=session.website,
+            topic=session.topic,
+            review_note=session.review_note,
+            completed_at=session.completed_at,
+            source=session.source,
+            created_at=session.created_at.isoformat(),
+        )
+        for session in sessions
+    ]
+
+
+@app.delete("/focus-sessions/{session_id}")
+def delete_focus_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    focus_session = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.id == session_id,
+            FocusSession.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if focus_session is None:
+        raise HTTPException(status_code=404, detail="Focus session not found.")
+
+    db.delete(focus_session)
+    db.commit()
+
+    return {"message": "Focus session deleted."}
 
 
 @app.get("/leaderboard", response_model=list[LeaderboardEntry])
@@ -277,6 +378,33 @@ def clean_subject_websites(subject_websites: dict[str, list[str]]) -> dict[str, 
 
     return cleaned
 
+def clean_subject_topics(subject_topics: dict[str, list[str]]) -> dict[str, list[str]]:
+    cleaned = {}
+
+    if not isinstance(subject_topics, dict):
+        return cleaned
+
+    for subject, topics in subject_topics.items():
+        clean_subject = str(subject).strip().lower()
+
+        if not clean_subject or len(clean_subject) > 50:
+            continue
+
+        if not isinstance(topics, list):
+            topics = [topics]
+
+        clean_topics = []
+
+        for topic in topics:
+            clean_topic = str(topic).strip()
+
+            if clean_topic and clean_topic not in clean_topics:
+                clean_topics.append(clean_topic[:80])
+
+        cleaned[clean_subject] = clean_topics[:30]
+
+    return cleaned
+
 def clean_todo_items(todo_items: list[dict]) -> list[dict]:
     cleaned = []
     seen_ids = set()
@@ -314,6 +442,14 @@ def clean_todo_items(todo_items: list[dict]) -> list[dict]:
             break
 
     return cleaned
+
+def clean_optional_text(value, max_length):
+    clean_value = str(value or "").strip()
+
+    if not clean_value:
+        return None
+
+    return clean_value[:max_length]
 
 @app.get("/subjects", response_model=SubjectList)
 def get_subjects(current_user: User = Depends(get_current_user)):
@@ -372,6 +508,37 @@ def update_subject_websites(
     db.commit()
 
     return {"message": "Subject websites saved."}
+
+@app.get("/subject-topics", response_model=SubjectTopicList)
+def get_subject_topics(current_user: User = Depends(get_current_user)):
+    if not current_user.subject_topics_json:
+        return SubjectTopicList(subject_topics={})
+
+    try:
+        subject_topics = json.loads(current_user.subject_topics_json)
+    except json.JSONDecodeError:
+        subject_topics = {}
+
+    if not isinstance(subject_topics, dict):
+        subject_topics = {}
+
+    return SubjectTopicList(
+        subject_topics=clean_subject_topics(subject_topics)
+    )
+
+
+@app.put("/subject-topics")
+def update_subject_topics(
+    subject_topic_data: SubjectTopicList,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.subject_topics_json = json.dumps(
+        clean_subject_topics(subject_topic_data.subject_topics)
+    )
+    db.commit()
+
+    return {"message": "Subject topics saved."}
 
 @app.get("/todo-items", response_model=TodoItemList)
 def get_todo_items(current_user: User = Depends(get_current_user)):
