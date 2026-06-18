@@ -24,9 +24,11 @@ def load_storage_with_stubs(data_dir):
     api_client_stub = types.ModuleType("studystreak.api_client")
     api_client_stub.upload_profile_data = lambda token, encrypted_profile_data: None
     api_client_stub.upload_subject_websites = lambda token, subject_websites: None
+    api_client_stub.upload_subject_topics = lambda token, subject_topics: None
     api_client_stub.upload_subjects = lambda token, subjects: None
     api_client_stub.upload_streak = lambda token, current_streak: None
     api_client_stub.upload_timetable = lambda token, timetable: None
+    api_client_stub.upload_todo_items = lambda token, todo_items: None
 
     sys.modules["studystreak.session"] = session_stub
     sys.modules["studystreak.profile_sync"] = profile_sync_stub
@@ -164,6 +166,69 @@ class StreakStorageTests(unittest.TestCase):
             data["subject_websites"]["physics"],
             ["https://senecalearning.com"],
         )
+
+    def test_repair_builds_review_queue_from_session_topics(self):
+        data = self.storage.get_default_data()
+        data["sessions"] = [
+            {
+                "subject": "maths",
+                "topic": "Integration",
+                "minutes": 30,
+                "date": "2026-06-10",
+                "source": "manual",
+                "note": "Substitution questions",
+            },
+            {
+                "subject": "maths",
+                "topic": "Integration",
+                "minutes": 20,
+                "date": "2026-06-12",
+                "source": "manual",
+            },
+            {
+                "subject": "physics",
+                "minutes": 15,
+                "date": "2026-06-12",
+                "source": "manual",
+            },
+        ]
+
+        repaired = self.storage.repair_data(data)
+
+        self.assertEqual(len(repaired["review_items"]), 1)
+        review = repaired["review_items"][0]
+        self.assertEqual(review["subject"], "maths")
+        self.assertEqual(review["topic"], "Integration")
+        self.assertEqual(review["review_count"], 2)
+        self.assertEqual(review["last_studied"], "2026-06-12")
+        self.assertEqual(review["next_due"], "2026-06-15")
+
+    def test_review_queue_moves_due_date_after_new_topic_session(self):
+        data = self.storage.get_default_data()
+        data["sessions"] = [
+            {
+                "subject": "maths",
+                "topic": "Integration",
+                "minutes": 30,
+                "date": "2026-06-10",
+                "source": "manual",
+            },
+        ]
+
+        first = self.storage.repair_data(data)["review_items"][0]
+        self.assertEqual(first["next_due"], "2026-06-11")
+
+        data["sessions"].append({
+            "subject": "maths",
+            "topic": "Integration",
+            "minutes": 25,
+            "date": "2026-06-11",
+            "source": "manual",
+        })
+
+        second = self.storage.repair_data(data)["review_items"][0]
+        self.assertEqual(second["review_count"], 2)
+        self.assertEqual(second["next_due"], "2026-06-14")
 
 
 if __name__ == "__main__":

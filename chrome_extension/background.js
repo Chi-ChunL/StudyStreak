@@ -5,6 +5,7 @@ const TIMETABLE_ALARM_PREFIX = "studystreak-timetable-";
 const POMODORO_WORK_SECONDS = 50 * 60;
 const POMODORO_BREAK_SECONDS = 10 * 60;
 const IDLE_DETECTION_SECONDS = 8 * 60;
+const STRICT_FOCUS_REDIRECT_COOLDOWN_MS = 4000;
 
 
 const DEFAULT_STATS = {
@@ -70,6 +71,7 @@ const DEFAULT_SETTINGS = {
 
 const ICON_URL = chrome.runtime.getURL("icon128.png");
 let pomodoroTransitionRunning = false;
+const strictFocusRedirects = new Map();
 
 async function getSettings() {
     const saved = await chrome.storage.local.get(DEFAULT_SETTINGS);
@@ -971,6 +973,42 @@ function getAllowedDomainsForFocus(settings) {
     return settings.allowedDomains;
 }
 
+function getStrictFocusRedirectUrl(allowedDomains) {
+    const cleanAllowedDomains = allowedDomains
+        .map((domain) => String(domain || "").trim())
+        .filter(Boolean);
+
+    if (cleanAllowedDomains.length === 0) {
+        return "";
+    }
+
+    const redirectDomain = cleanAllowedDomains[
+        Math.floor(Math.random() * cleanAllowedDomains.length)
+    ];
+
+    return redirectDomain.startsWith("http://") ||
+        redirectDomain.startsWith("https://")
+        ? redirectDomain
+        : `https://${redirectDomain}`;
+}
+
+function strictFocusRedirectIsPending(tabId) {
+    const pendingRedirect = strictFocusRedirects.get(tabId);
+
+    if (!pendingRedirect) {
+        return false;
+    }
+
+    const now = Date.now();
+
+    if (now - pendingRedirect.startedAt > STRICT_FOCUS_REDIRECT_COOLDOWN_MS) {
+        strictFocusRedirects.delete(tabId);
+        return false;
+    }
+
+    return true;
+}
+
 async function getActiveTabDomain() {
     const [tab] = await chrome.tabs.query({
         active: true,
@@ -1460,6 +1498,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     }
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+    strictFocusRedirects.delete(tabId);
+});
+
 chrome.idle.onStateChanged.addListener(() => {
     refreshFocusState().catch(() => {});
 });
@@ -1614,10 +1656,12 @@ async function enforceStrictFocus(settings = null) {
     settings = settings || await getSettings();
 
     if (!settings.focusActive || !settings.strictFocusEnabled) {
+        strictFocusRedirects.clear();
         return;
     }
 
     if (settings.pomodoroEnabled && settings.pomodoroPhase === "break") {
+        strictFocusRedirects.clear();
         return;
     }
 
@@ -1642,17 +1686,29 @@ async function enforceStrictFocus(settings = null) {
 
     const currentDomain = getDomainFromUrl(tab.url);
 
-    if (!currentDomain || isAllowedDomain(currentDomain, allowedDomains)) {
+    if (!currentDomain) {
         return;
     }
 
-    const redirectDomain = allowedDomains[
-        Math.floor(Math.random() * allowedDomains.length)
-    ];
-    const redirectUrl = redirectDomain.startsWith("http://") ||
-        redirectDomain.startsWith("https://")
-        ? redirectDomain
-        : `https://${redirectDomain}`;
+    if (isAllowedDomain(currentDomain, allowedDomains)) {
+        strictFocusRedirects.delete(tab.id);
+        return;
+    }
+
+    if (strictFocusRedirectIsPending(tab.id)) {
+        return;
+    }
+
+    const redirectUrl = getStrictFocusRedirectUrl(allowedDomains);
+
+    if (!redirectUrl) {
+        return;
+    }
+
+    strictFocusRedirects.set(tab.id, {
+        url: redirectUrl,
+        startedAt: Date.now()
+    });
 
     await chrome.tabs.update(tab.id, {
         url: redirectUrl

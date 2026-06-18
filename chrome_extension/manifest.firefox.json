@@ -3,7 +3,7 @@
     "name": "StudyStreak Companion",
     "version": "0.2.0",
     "description": "Daily study reminders and focus quality tracking for StudyStreak",
-    "permissions": ["alarms", "notifications", "storage", "tabs", "idle"],
+    "permissions": ["alarms", "notifications", "storage", "tabs", "idle", "scripting"],
     "host_permissions": [
         "https://chichi.hackclub.app/*",
         "http://127.0.0.1:8000/*"

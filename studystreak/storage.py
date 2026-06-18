@@ -41,6 +41,7 @@ def get_default_data():
         "sessions": [],
         "streak_days": [],
         "focus_quality_sessions": [],
+        "review_items": [],
         "weekly_goal": 300,
         "subjects": [],
         "subject_websites": {},
@@ -245,6 +246,92 @@ def clean_todo_items(raw_items):
 
     return cleaned
 
+def get_review_interval_days(review_count):
+    intervals = [1, 3, 7, 14, 30]
+    index = max(0, min(int(review_count or 1) - 1, len(intervals) - 1))
+    return intervals[index]
+
+def build_review_items_from_sessions(sessions):
+    review_groups = {}
+
+    if not isinstance(sessions, list):
+        return []
+
+    for index, session in enumerate(sessions):
+        if not isinstance(session, dict):
+            continue
+
+        subject = str(session.get("subject", "")).strip().lower()
+        topic = str(session.get("topic", "")).strip()
+
+        if not subject or not topic:
+            continue
+
+        date_text = str(session.get("date", "")).strip()
+
+        try:
+            studied_day = date.fromisoformat(date_text)
+        except ValueError:
+            completed_at = str(session.get("completed_at", "")).strip()
+            try:
+                completed_datetime = datetime.fromisoformat(
+                    completed_at.replace("Z", "+00:00")
+                )
+                if completed_datetime.tzinfo is not None:
+                    completed_datetime = completed_datetime.astimezone()
+                studied_day = completed_datetime.date()
+            except ValueError:
+                continue
+
+        group_key = f"{subject}\0{topic.lower()}"
+        group = review_groups.setdefault(
+            group_key,
+            {
+                "subject": subject,
+                "topic": topic[:80],
+                "review_count": 0,
+                "last_studied": None,
+                "last_note": "",
+                "last_session_id": "",
+            },
+        )
+
+        group["review_count"] += 1
+
+        if group["last_studied"] is None or studied_day >= group["last_studied"]:
+            group["last_studied"] = studied_day
+            group["last_note"] = str(session.get("note", "")).strip()[:240]
+            group["last_session_id"] = str(
+                session.get("completed_at") or f"{date_text}-{index}"
+            )[:120]
+
+    review_items = []
+
+    for group in review_groups.values():
+        last_studied = group["last_studied"]
+
+        if last_studied is None:
+            continue
+
+        next_due = last_studied + timedelta(
+            days=get_review_interval_days(group["review_count"])
+        )
+        review_items.append({
+            "id": f"{group['subject']}::{group['topic'].lower()}"[:120],
+            "subject": group["subject"],
+            "topic": group["topic"],
+            "review_count": group["review_count"],
+            "last_studied": str(last_studied),
+            "next_due": str(next_due),
+            "last_note": group["last_note"],
+            "last_session_id": group["last_session_id"],
+        })
+
+    return sorted(
+        review_items,
+        key=lambda item: (item["next_due"], item["subject"], item["topic"].lower()),
+    )
+
 def merge_todo_items(data, server_todo_items):
     data = repair_data(data)
     server_items = clean_todo_items(server_todo_items)
@@ -425,6 +512,8 @@ def repair_data(data):
     
     if not isinstance(data["focus_quality_sessions"], list):
         data["focus_quality_sessions"] = []
+
+    data["review_items"] = build_review_items_from_sessions(data["sessions"])
 
     if "weekly_goal" not in data:
         data["weekly_goal"] = 300

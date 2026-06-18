@@ -5,7 +5,7 @@ from functools import partial
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (
     Header,
@@ -36,6 +36,7 @@ from studystreak.storage import (
     save_data,
     save_focus_quality_json,
     save_local_data_without_sync,
+    sync_profile_data_in_background,
 )
 from studystreak.accounts import create_account, list_accounts, login_account, logout_account
 from studystreak.accounts import normalise_username, validate_password, validate_username
@@ -514,6 +515,10 @@ def get_next_best_action(data):
 
 def get_review_queue_display(data):
     due_reviews = get_due_review_items(data)
+    scheduled_reviews = sorted(
+        data.get("review_items", []),
+        key=lambda item: str(item.get("next_due", "")),
+    )
     todo_items = [
         item for item in data.get("todo_items", [])
         if not item.get("done", False)
@@ -531,10 +536,22 @@ def get_review_queue_display(data):
 
     if not due_reviews:
         if not todo_items:
-            lines.extend([
-                "No todo tasks yet.",
-                "Add tasks in the browser extension to sync them here.",
-            ])
+            if scheduled_reviews:
+                next_review = scheduled_reviews[0]
+                lines.extend([
+                    "No reviews due today.",
+                    (
+                        f"Next: {next_review.get('subject', 'unknown')} - "
+                        f"{next_review.get('topic', 'review')} "
+                        f"on {next_review.get('next_due', 'soon')}"
+                    ),
+                ])
+            else:
+                lines.extend([
+                    "No review topics yet.",
+                    "Add a topic after a session to build review.",
+                    "Todo tasks sync from the browser overlay.",
+                ])
         return "\n".join(lines)
 
     if todo_items:
@@ -555,22 +572,31 @@ def get_focus_readiness_display(data, server_token):
     focus_sessions = data.get("focus_quality_sessions", [])
     subject_websites = data.get("subject_websites", {})
     saved_website_sets = sum(1 for websites in subject_websites.values() if websites)
-    extension_status = "[green]ready[/green]" if focus_sessions or server_token else "[yellow]connect account[/yellow]"
+    todo_open_count = sum(
+        1 for item in data.get("todo_items", [])
+        if not item.get("done", False)
+    )
+    extension_status = "[green]ready[/green]" if server_token else "[yellow]login online[/yellow]"
     shield_status = "[green]active[/green]" if saved_website_sets else "[yellow]save websites[/yellow]"
     latest_score = "none"
     latest_distraction = "none"
+    latest_focus = "none"
 
     if focus_sessions:
         latest = focus_sessions[0]
         latest_score = f"{latest.get('score', 0)}%"
         latest_distraction = latest.get("top_distracted_domain", "none")
+        latest_subject = latest.get("subject", "unknown")
+        latest_focus = f"{latest_subject} ({latest_score})"
 
     lines = [
         "[bold]Focus Readiness[/bold]",
         f"Extension: {extension_status}",
         f"Blocked sites: {shield_status}",
+        f"Allowed site sets: {saved_website_sets}",
+        f"Open browser todos: {todo_open_count}",
         "Current mode: Custom / Pomodoro",
-        f"Last focus quality: {latest_score}",
+        f"Last browser focus: {latest_focus}",
         f"Last distraction: {latest_distraction}",
     ]
 
@@ -652,7 +678,7 @@ def get_home_status_card(data, logged_in, server_online, server_token):
     else:
         server_status = "Checking"
 
-    sync_status = "Synced" if server_token is not None else "Local only"
+    sync_status = get_sync_status_text(data, server_token, rich=False)
     account_status = "Logged in" if logged_in else "Not logged in"
 
     return "\n".join([
@@ -660,6 +686,44 @@ def get_home_status_card(data, logged_in, server_online, server_token):
         f"Account: {account_status}   Server: {server_status}   Sync: {sync_status}   Streak: {streak_count}d",
         f"Week goal: {weekly_minutes} / {weekly_goal} min   Progress: {weekly_progress_bar}",
     ])
+
+def sync_upload_is_pending(data):
+    sync_data = data.get("sync", {})
+    last_local_update = sync_data.get("last_local_update")
+    last_cloud_sync = sync_data.get("last_cloud_sync")
+
+    if last_local_update is None:
+        return False
+
+    if last_cloud_sync is None:
+        return True
+
+    return last_cloud_sync < last_local_update
+
+def get_sync_status_text(data, server_token, rich=True):
+    sync_data = data.get("sync", {})
+    last_sync_error = sync_data.get("last_sync_error")
+    last_local_update = sync_data.get("last_local_update")
+    last_cloud_sync = sync_data.get("last_cloud_sync")
+
+    if server_token is None:
+        text = "Local only"
+        return f"[yellow]{text}[/yellow]" if rich else text
+
+    if last_sync_error:
+        text = "Failed"
+        return f"[red]{text}[/red]" if rich else text
+
+    if last_cloud_sync is None:
+        text = "Not synced yet" if last_local_update is None else "Pending upload"
+        return f"[yellow]{text}[/yellow]" if rich else text
+
+    if sync_upload_is_pending(data):
+        text = "Pending upload"
+        return f"[yellow]{text}[/yellow]" if rich else text
+
+    text = "Synced"
+    return f"[green]{text}[/green]" if rich else text
 
 def get_home_action_card(data):
     recommendation = get_next_best_action(data)
@@ -1010,7 +1074,20 @@ def get_extension_status_display(data, server_token):
     website_sets = sum(1 for websites in subject_websites.values() if websites)
     timetable = data.get("timetable", [])
     focus_sessions = data.get("focus_quality_sessions", [])
-    latest_focus = focus_sessions[0].get("completed_at", "none") if focus_sessions else "none"
+    todo_open_count = sum(
+        1 for item in data.get("todo_items", [])
+        if not item.get("done", False)
+    )
+    latest_focus = "none"
+
+    if focus_sessions:
+        latest = focus_sessions[0]
+        latest_focus = (
+            f"{latest.get('subject', 'unknown')} - "
+            f"{latest.get('score', 0)}% - "
+            f"{str(latest.get('completed_at', ''))[:10]}"
+        )
+
     sync_ready = "[green]Ready[/green]" if server_token is not None else "[yellow]Log in online first[/yellow]"
 
     return "\n".join([
@@ -1018,8 +1095,9 @@ def get_extension_status_display(data, server_token):
         f"[bold]Subjects synced:[/bold] {len(subjects)}",
         f"[bold]Subject website sets:[/bold] {website_sets}",
         f"[bold]Timetable reminders:[/bold] {len(timetable)}",
+        f"[bold]Open browser todos:[/bold] {todo_open_count}",
         f"[bold]Chrome/Firefox focus summaries:[/bold] {len(focus_sessions)}",
-        f"[bold]Latest focus sync:[/bold] {latest_focus}",
+        f"[bold]Latest browser focus:[/bold] {latest_focus}",
         "",
         "[bold]Chrome:[/bold] load the chrome_extension folder in chrome://extensions.",
         "[bold]Firefox/Zen:[/bold] use the signed add-on or build dist/firefox_extension.",
@@ -1029,12 +1107,16 @@ def get_privacy_display(data):
     focus_count = len(data.get("focus_quality_sessions", []))
     session_count = len(data.get("sessions", []))
     subject_count = len(data.get("subjects", []))
+    review_count = len(data.get("review_items", []))
+    todo_count = len(data.get("todo_items", []))
     sync_data = data.get("sync", {})
 
     return "\n".join([
         f"[bold]Study sessions:[/bold] {session_count}",
         f"[bold]Subjects:[/bold] {subject_count}",
         f"[bold]Focus-quality summaries:[/bold] {focus_count}",
+        f"[bold]Review topics:[/bold] {review_count}",
+        f"[bold]Todo items:[/bold] {todo_count}",
         f"[bold]Last cloud sync:[/bold] {sync_data.get('last_cloud_sync') or 'never'}",
         "",
         "Export Data saves a JSON copy to the StudyStreak data folder.",
@@ -1150,7 +1232,11 @@ def get_setup_checklist(data, logged_in, server_online, server_token):
     has_any_session = len(data.get("sessions", [])) > 0
     has_timetable = len(data.get("timetable", [])) > 0
     has_chrome_data = len(data.get("focus_quality_sessions", [])) > 0
-    cloud_ready = server_token is not None and server_online is not False
+    cloud_ready = (
+        server_token is not None
+        and server_online is not False
+        and not data.get("sync", {}).get("last_sync_error")
+    )
 
     items = [
         (logged_in, "Account", "log in or create an account."),
@@ -1182,11 +1268,11 @@ def get_setup_checklist(data, logged_in, server_online, server_token):
 #show health
 def get_setup_health_display(data, logged_in, server_online, server_token):
     sync_data = data.get("sync", {})
-    last_sync_error = sync_data.get("last_sync_error")
-    last_cloud_sync = sync_data.get("last_cloud_sync")
     subjects = data.get("subjects", [])
     timetable = data.get("timetable", [])
     focus_sessions = data.get("focus_quality_sessions", [])
+    todo_items = data.get("todo_items", [])
+    review_items = data.get("review_items", [])
 
     if server_online is True:
         server_status = "[green]Connected[/green]"
@@ -1195,15 +1281,10 @@ def get_setup_health_display(data, logged_in, server_online, server_token):
     else:
         server_status = "[yellow]Checking[/yellow]"
 
-    if last_sync_error:
-        sync_status = f"[red]Failed[/red] - {last_sync_error}"
-    elif last_cloud_sync:
-        sync_status = "[green]Synced[/green]"
-    else:
-        sync_status = "[yellow]Not synced yet[/yellow]"
-
     account_status = "[green]Logged in[/green]" if logged_in else "[yellow]Login needed[/yellow]"
     cloud_status = "[green]Ready[/green]" if server_token is not None else "[yellow]Not logged in online[/yellow]"
+    open_todos = sum(1 for item in todo_items if not item.get("done", False))
+    sync_status = get_sync_status_text(data, server_token)
 
     return "\n".join([
         f"[bold]Account:[/bold] {account_status}",
@@ -1214,6 +1295,9 @@ def get_setup_health_display(data, logged_in, server_online, server_token):
         f"[bold]Subject website sets:[/bold] {len(data.get('subject_websites', {}))}",
         f"[bold]Timetable sessions:[/bold] {len(timetable)}",
         f"[bold]Chrome focus summaries:[/bold] {len(focus_sessions)}",
+        f"[bold]Open todos:[/bold] {open_todos}",
+        f"[bold]Review topics:[/bold] {len(review_items)}",
+        f"[bold]Last cloud sync:[/bold] {sync_data.get('last_cloud_sync') or 'never'}",
         f"[bold]Data folder:[/bold] {get_app_data_dir()}",
     ])
 
@@ -1594,7 +1678,7 @@ class StudyStreakApp(App):
                             yield Button("Log Session", id="sessions-log-tab-button")
                             yield Button("Edit Logs", id="sessions-manage-tab-button")
 
-                        with Vertical(id="sessions-content"):
+                        with VerticalScroll(id="sessions-content"):
                             with Vertical(id="log-session-panel"):
                                 yield Static("Log a study session.", id="log-title")
 
@@ -4362,12 +4446,23 @@ class StudyStreakApp(App):
 
         if event.button.id == "sync-now-button":
             try:
+                sync_start_data = load_data()
+                profile_upload_queued = False
+
+                if (
+                    get_server_token() is not None
+                    and (
+                        sync_upload_is_pending(sync_start_data)
+                        or sync_start_data.get("sync", {}).get("last_sync_error")
+                    )
+                ):
+                    sync_profile_data_in_background(sync_start_data)
+                    profile_upload_queued = True
+
                 subject_sync_result = self.sync_subject_websites_from_server()
                 subject_topic_sync_result = self.sync_subject_topics_from_server()
                 todo_sync_result = self.sync_todo_items_from_server()
                 browser_session_sync_result = self.sync_browser_focus_sessions_from_server()
-                data = load_data()
-                save_data(data)
                 sync_result = self.sync_focus_quality_from_server()
             except ValueError as error:
                 self.update_sync_status()
@@ -4387,6 +4482,7 @@ class StudyStreakApp(App):
                 or subject_topic_updates > 0
                 or todo_updates > 0
                 or browser_session_updates > 0
+                or profile_upload_queued
             ):
                 self.update_dashboard()
                 achievement_unlocked = self.unlock_earned_achievements()
@@ -4418,6 +4514,9 @@ class StudyStreakApp(App):
 
                 if todo_updates > 0:
                     message_parts.append(f"{todo_updates} todo update(s)")
+
+                if profile_upload_queued:
+                    message_parts.append("profile upload retry")
 
                 self.show_temp_message(
                     "#sync-message",

@@ -275,6 +275,7 @@ function renderTodaySessions(settings = currentSettings) {
 
 function renderTodoList(items = currentSettings.todoItems) {
     const safeItems = cleanTodoItems(items);
+    const loggedIn = isLoggedIn(currentSettings);
     currentSettings.todoItems = safeItems;
 
     if (!todoList) {
@@ -303,6 +304,7 @@ function renderTodoList(items = currentSettings.todoItems) {
 
         checkbox.type = "checkbox";
         checkbox.checked = item.done;
+        checkbox.disabled = !loggedIn;
         checkbox.title = "Mark task complete";
 
         text.className = "todo-text";
@@ -311,13 +313,14 @@ function renderTodoList(items = currentSettings.todoItems) {
         removeButton.className = "todo-delete-button";
         removeButton.type = "button";
         removeButton.textContent = "X";
+        removeButton.disabled = !loggedIn;
         removeButton.title = "Remove task";
 
         row.append(checkbox, text, removeButton);
         todoList.append(row);
     });
 
-    clearCompletedTodosButton.disabled = !safeItems.some((item) => item.done);
+    clearCompletedTodosButton.disabled = !loggedIn || !safeItems.some((item) => item.done);
 }
 
 async function saveTodoItems(items, message = "Todo list saved.") {
@@ -513,7 +516,7 @@ function setAccountGate(settings) {
     const loggedIn = isLoggedIn(settings);
 
     tabButtons.forEach((button) => {
-        button.disabled = !["account", "todo", "settings"].includes(button.dataset.tab) && !loggedIn;
+        button.disabled = button.dataset.tab !== "account" && !loggedIn;
     });
 
     saveButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
@@ -527,14 +530,15 @@ function setAccountGate(settings) {
     focusSubject.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
     strictFocusEnabled.disabled = !loggedIn;
     pomodoroEnabledInput.disabled = !loggedIn || currentSettings.focusActive;
-    todoOverlayEnabled.disabled = false;
-    newTodoInput.disabled = false;
-    addTodoButton.disabled = false;
-    clearCompletedTodosButton.disabled = !cleanTodoItems(currentSettings.todoItems).some((item) => item.done);
+    todoOverlayEnabled.disabled = !loggedIn;
+    newTodoInput.disabled = !loggedIn;
+    addTodoButton.disabled = !loggedIn;
+    clearCompletedTodosButton.disabled =
+        !loggedIn || !cleanTodoItems(currentSettings.todoItems).some((item) => item.done);
 
     const activePanel = document.querySelector(".tab-panel.active")?.dataset.panel || "account";
 
-    if (!loggedIn && !["account", "todo", "settings"].includes(activePanel)) {
+    if (!loggedIn && activePanel !== "account") {
         showPopupTab("account");
     }
 }

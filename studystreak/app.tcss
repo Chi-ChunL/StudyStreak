@@ -8,7 +8,7 @@ Screen {
 /* #------------------main container------------------- */
 
 #main-container {
-    width: 90;
+    width: 112;
     height: auto;
     border: round grey;
     padding: 1 2;
@@ -147,6 +147,68 @@ TabbedContent {
 
 TabPane {
     padding: 1;
+}
+
+#main-tabs {
+    width: 100%;
+    min-height: 32;
+    height: auto;
+}
+
+#main-tabs > ContentTabs {
+    dock: left;
+    width: 17;
+    height: 32;
+    padding: 0 1 0 0;
+    border-right: solid #4d4d4d;
+    background: transparent;
+}
+
+#main-tabs > ContentTabs > #tabs-scroll {
+    width: 100%;
+    height: 32;
+    overflow: hidden hidden;
+}
+
+#main-tabs > ContentTabs #tabs-list-bar,
+#main-tabs > ContentTabs #tabs-list {
+    width: 100%;
+    min-width: 0;
+    height: 32;
+    overflow: hidden hidden;
+}
+
+#main-tabs > ContentTabs #tabs-list {
+    layout: vertical;
+}
+
+#main-tabs > ContentTabs Underline {
+    display: none;
+}
+
+#main-tabs > ContentTabs Tab {
+    width: 100%;
+    height: 3;
+    margin-bottom: 1;
+    padding: 0 1;
+    background: transparent;
+    color: #b8b8b8;
+    border: none;
+    content-align: center middle;
+    text-align: center;
+}
+
+#main-tabs > ContentTabs Tab:hover {
+    background: #1f1f1f;
+    color: white;
+    border-right: solid #777777;
+}
+
+#main-tabs > ContentTabs Tab.-active {
+    background: #232323;
+    color: white;
+    border-right: tall #1688d8;
+    text-style: bold;
 }
 
 
@@ -392,18 +454,25 @@ TabPane {
 }
 
 #sessions-layout {
-    height: auto;
+    height: 28;
 }
 
 #sessions-sidebar {
     width: 22;
+    height: 100%;
+    align: center middle;
     border-right: solid #555555;
     padding-right: 1;
 }
 
 #sessions-content {
     width: 1fr;
+    height: 28;
     padding-left: 2;
+    overflow-y: scroll;
+    scrollbar-background: #111111;
+    scrollbar-color: #777777;
+    scrollbar-color-hover: #aaaaaa;
 }
 
 #sessions-log-tab-button,
@@ -1714,6 +1783,31 @@ Screen.light-mode {
     text-style: bold;
 }
 
+.light-mode #main-tabs > ContentTabs {
+    background: transparent;
+    border-right: solid #9a8567;
+}
+
+.light-mode #main-tabs > ContentTabs Tab {
+    background: transparent;
+    color: #254f6f;
+    border: none;
+    text-style: bold;
+}
+
+.light-mode #main-tabs > ContentTabs Tab:hover {
+    background: #e8d9bd;
+    color: #2b2620;
+    border-right: solid #9a8567;
+}
+
+.light-mode #main-tabs > ContentTabs Tab.-active {
+    background: #6f8799;
+    color: #fff8e8;
+    border-right: tall #0b84d8;
+    text-style: bold;
+}
+
 .light-mode Input {
     background: #fff8e8;
     color: #2b2620;
@@ -2023,6 +2117,12 @@ Screen.light-mode {
 
 .light-mode #sessions-sidebar {
     border-right: solid #9a8567;
+}
+
+.light-mode #sessions-content {
+    scrollbar-background: #eadfc7;
+    scrollbar-color: #6f8799;
+    scrollbar-color-hover: #526a7c;
 }
 
 .light-mode #ui-sounds-checkbox,

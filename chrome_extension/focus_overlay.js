@@ -1,5 +1,5 @@
 (function () {
-    const SCRIPT_VERSION = "todo-overlay-v2";
+    const SCRIPT_VERSION = "todo-overlay-v3";
 
     if (window.__studyStreakFocusOverlayVersion === SCRIPT_VERSION) {
         return;
@@ -19,6 +19,7 @@
         "pomodoroPhaseStartedAt",
         "pomodoroPhaseDurationSeconds",
         "pomodoroWorkBlocksCompleted",
+        "syncedSubjectTopics",
         "focusOverlayPosition"
     ];
     const TODO_STORAGE_KEYS = ["todoOverlayEnabled", "todoItems", "todoOverlayPosition"];
@@ -40,11 +41,13 @@
         pomodoroPhaseStartedAt: null,
         pomodoroPhaseDurationSeconds: 0,
         pomodoroWorkBlocksCompleted: 0,
+        syncedSubjectTopics: {},
         focusOverlayPosition: null,
         todoOverlayEnabled: true,
         todoItems: [],
         todoOverlayPosition: null
     };
+    let pendingReviewSummary = null;
 
     function storageGet(keys) {
         return new Promise((resolve) => {
@@ -108,6 +111,39 @@
             })
             .filter(Boolean)
             .slice(0, 50);
+    }
+
+    function cleanSubjectTopicMap(subjectTopics) {
+        const cleaned = {};
+
+        if (!subjectTopics || typeof subjectTopics !== "object" || Array.isArray(subjectTopics)) {
+            return cleaned;
+        }
+
+        Object.entries(subjectTopics).forEach(([subject, topics]) => {
+            const cleanSubject = String(subject || "").trim().toLowerCase();
+            const topicList = Array.isArray(topics) ? topics : [topics];
+
+            if (!cleanSubject) {
+                return;
+            }
+
+            cleaned[cleanSubject] = topicList
+                .map((topic) => String(topic || "").trim())
+                .filter(Boolean)
+                .filter((topic, index, list) => list.indexOf(topic) === index)
+                .slice(0, 30);
+        });
+
+        return cleaned;
+    }
+
+    function getSubjectTopics(subject) {
+        const subjectTopics = cleanSubjectTopicMap(currentState.syncedSubjectTopics);
+        const cleanSubject = String(subject || "").trim().toLowerCase();
+        const topics = subjectTopics[cleanSubject];
+
+        return Array.isArray(topics) ? topics : [];
     }
 
     function clampPosition(position, fallback) {
@@ -198,7 +234,11 @@
         let root = document.getElementById(OVERLAY_ID);
 
         if (root) {
-            return root;
+            if (root.shadowRoot?.querySelector(".review-panel")) {
+                return root;
+            }
+
+            root.remove();
         }
 
         root = document.createElement("div");
@@ -216,7 +256,8 @@
         const style = document.createElement("style");
         style.textContent = `
             .timer {
-                min-width: 146px;
+                box-sizing: border-box;
+                width: 246px;
                 padding: 9px 12px;
                 border: 2px solid #0f4c7a;
                 border-radius: 8px;
@@ -306,6 +347,95 @@
                 cursor: wait;
                 opacity: 0.7;
             }
+
+            .review-panel {
+                display: none;
+                margin-top: 9px;
+                padding-top: 9px;
+                border-top: 1px solid #d4bd95;
+                text-align: left;
+            }
+
+            .review-panel.visible {
+                display: block;
+            }
+
+            .review-title {
+                color: #0f4c7a;
+                font-size: 12px;
+                font-weight: 900;
+                line-height: 1.2;
+                margin-bottom: 6px;
+                text-align: center;
+            }
+
+            .review-label {
+                display: block;
+                color: #2f4f63;
+                font-size: 11px;
+                font-weight: 900;
+                margin-top: 6px;
+            }
+
+            .review-topic,
+            .review-note {
+                box-sizing: border-box;
+                width: 100%;
+                margin-top: 4px;
+                border: 2px solid #9b8061;
+                border-radius: 5px;
+                background: #fff8e8;
+                color: #111827;
+                font: inherit;
+                font-size: 12px;
+                pointer-events: auto;
+            }
+
+            .review-topic {
+                padding: 5px 6px;
+            }
+
+            .review-note {
+                min-height: 62px;
+                padding: 6px;
+                resize: vertical;
+            }
+
+            .review-actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 7px;
+                margin-top: 8px;
+            }
+
+            .review-actions button {
+                margin: 0;
+                padding: 6px 7px;
+                border-radius: 6px;
+                cursor: pointer;
+                font: inherit;
+                font-size: 12px;
+                font-weight: 900;
+                pointer-events: auto;
+            }
+
+            .save-review {
+                border: 2px solid #0f6b35;
+                background: #dfead6;
+                color: #173f20;
+            }
+
+            .skip-review {
+                border: 2px solid #9b8061;
+                background: #ead7b2;
+                color: #2c211c;
+            }
+
+            .save-review:disabled,
+            .skip-review:disabled {
+                cursor: wait;
+                opacity: 0.7;
+            }
         `;
 
         const timer = document.createElement("div");
@@ -316,11 +446,28 @@
             <div class="subject">Focus running</div>
             <div class="status" aria-live="polite"></div>
             <button class="stop-button" type="button">Stop Focus</button>
+            <div class="review-panel" aria-live="polite">
+                <div class="review-title">Review this session</div>
+                <label class="review-label">
+                    Topic
+                    <select class="review-topic"></select>
+                </label>
+                <label class="review-label">
+                    Note
+                    <textarea class="review-note" maxlength="1000" placeholder="What did you cover?"></textarea>
+                </label>
+                <div class="review-actions">
+                    <button class="save-review" type="button">Save</button>
+                    <button class="skip-review" type="button">Skip</button>
+                </div>
+            </div>
         `;
 
         shadow.append(style, timer);
         makeOverlayDraggable(root, timer, "focusOverlayPosition");
         shadow.querySelector(".stop-button").addEventListener("click", stopFocusFromOverlay);
+        shadow.querySelector(".save-review").addEventListener("click", saveReviewFromOverlay);
+        shadow.querySelector(".skip-review").addEventListener("click", skipReviewFromOverlay);
         document.documentElement.append(root);
         return root;
     }
@@ -602,6 +749,131 @@
         setOverlayStatus(stopStatus.text || "Stopping...", stopStatus.type || "pending");
     }
 
+    function scheduleStoppedOverlayRemoval(delay = 2500) {
+        if (removeAfterStopTimerId !== null) {
+            clearTimeout(removeAfterStopTimerId);
+        }
+
+        removeAfterStopTimerId = setTimeout(() => {
+            keepOverlayAfterStop = false;
+            pendingReviewSummary = null;
+            removeAfterStopTimerId = null;
+            removeOverlay();
+        }, delay);
+    }
+
+    function hideReviewPanel() {
+        const root = document.getElementById(OVERLAY_ID);
+        const panel = root?.shadowRoot?.querySelector(".review-panel");
+
+        if (panel) {
+            panel.classList.remove("visible");
+        }
+    }
+
+    function showReviewPanel(summary) {
+        const root = getOverlayRoot();
+        const shadow = root.shadowRoot;
+
+        if (!shadow || !summary?.completedAt) {
+            return;
+        }
+
+        pendingReviewSummary = summary;
+
+        const topicSelect = shadow.querySelector(".review-topic");
+        const noteInput = shadow.querySelector(".review-note");
+        const panel = shadow.querySelector(".review-panel");
+        const topics = getSubjectTopics(summary.subject);
+
+        topicSelect.replaceChildren();
+
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "No topic";
+        topicSelect.append(emptyOption);
+
+        topics.forEach((topic) => {
+            const option = document.createElement("option");
+            option.value = topic;
+            option.textContent = topic;
+            topicSelect.append(option);
+        });
+
+        topicSelect.value = topics.includes(summary.topic) ? summary.topic : "";
+        noteInput.value = summary.reviewNote || "";
+        panel.classList.add("visible");
+        noteInput.focus();
+    }
+
+    async function saveReviewFromOverlay(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!pendingReviewSummary?.completedAt) {
+            setOverlayStatus("No completed session to review.", "failure");
+            return;
+        }
+
+        const root = getOverlayRoot();
+        const shadow = root.shadowRoot;
+        const saveButton = shadow.querySelector(".save-review");
+        const skipButton = shadow.querySelector(".skip-review");
+        const topic = shadow.querySelector(".review-topic").value;
+        const reviewNote = shadow.querySelector(".review-note").value;
+
+        saveButton.disabled = true;
+        skipButton.disabled = true;
+        saveButton.textContent = "Saving...";
+        setOverlayStatus("Saving review...", "pending");
+
+        try {
+            const result = await chrome.runtime.sendMessage({
+                type: "saveFocusReview",
+                completedAt: pendingReviewSummary.completedAt,
+                topic,
+                reviewNote
+            });
+
+            if (!result?.ok) {
+                setOverlayStatus(result?.error || "Review saved locally, but sync failed.", "failure");
+                saveButton.textContent = "Save";
+                saveButton.disabled = false;
+                skipButton.disabled = false;
+                return;
+            }
+
+            hideReviewPanel();
+            setOverlayStatus("Review synced.", "success");
+            scheduleStoppedOverlayRemoval();
+        } catch {
+            setOverlayStatus("Review sync failed.", "failure");
+            saveButton.textContent = "Save";
+            saveButton.disabled = false;
+            skipButton.disabled = false;
+        }
+    }
+
+    async function skipReviewFromOverlay(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (pendingReviewSummary?.completedAt) {
+            try {
+                await chrome.runtime.sendMessage({
+                    type: "skipFocusReview",
+                    completedAt: pendingReviewSummary.completedAt
+                });
+            } catch {
+                // The session is already stopped; skipping can still close the local prompt.
+            }
+        }
+
+        hideReviewPanel();
+        setOverlayStatus("Review skipped.", "success");
+        scheduleStoppedOverlayRemoval(1800);
+    }
+
     async function stopFocusFromOverlay(event) {
         event.preventDefault();
         event.stopPropagation();
@@ -619,15 +891,12 @@
             setOverlayStatus(result.text, result.type);
             await refreshState();
 
-            if (removeAfterStopTimerId !== null) {
-                clearTimeout(removeAfterStopTimerId);
+            if (summary?.completedAt) {
+                showReviewPanel(summary);
+                return;
             }
 
-            removeAfterStopTimerId = setTimeout(() => {
-                keepOverlayAfterStop = false;
-                removeAfterStopTimerId = null;
-                removeOverlay();
-            }, 5000);
+            scheduleStoppedOverlayRemoval(5000);
         } catch {
             button.disabled = false;
             button.textContent = "Stop failed";
@@ -655,6 +924,7 @@
             text: "",
             type: "pending"
         };
+        pendingReviewSummary = null;
     }
 
     function updateOverlay() {
@@ -692,6 +962,7 @@
         shadowTimer.querySelector(".time").textContent = timeText;
         shadowTimer.querySelector(".subject").textContent = subjectText;
         setOverlayStatus("", "pending");
+        hideReviewPanel();
 
         const stopButton = shadowTimer.querySelector(".stop-button");
         stopButton.disabled = false;
