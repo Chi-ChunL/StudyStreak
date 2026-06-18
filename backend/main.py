@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -104,6 +105,13 @@ app = FastAPI(title="StudyStreak Backend",
               docs_url=None if IS_PRODUCTION else "/docs",
               redoc_url=None if IS_PRODUCTION else "/redoc",
               )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^(chrome-extension|moz-extension)://.*$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

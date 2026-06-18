@@ -1,13 +1,18 @@
+html {
+    font-family: "Consolas", "Cascadia Mono", "Lucida Console", "Courier New", monospace;
+}
+
 body {
     width: 430px;
     height: 560px;
     margin: 0;
     background: #f3e7cf;
     color: #2c211c;
-    font-family: Consolas, "Cascadia Mono", "Lucida Console", "Courier New", monospace;
+    font-family: inherit;
     font-size: 14px;
     line-height: 1.35;
     letter-spacing: 0;
+    font-synthesis: none;
     overflow: hidden;
 }
 
@@ -15,7 +20,7 @@ button,
 input,
 select,
 textarea {
-    font-family: inherit;
+    font-family: "Consolas", "Cascadia Mono", "Lucida Console", "Courier New", monospace !important;
     font-size: inherit;
     letter-spacing: inherit;
 }
