@@ -4,7 +4,9 @@
 
 # StudyStreak
 
-StudyStreak is a terminal study tracker for building consistent study habits. It tracks daily streaks, study sessions, subjects, timetable plans, focus mode, achievements, leaderboard streaks, and browser focus quality through the companion extension.
+StudyStreak is a terminal-first study tracker for students who want a simple place to plan work, start focused sessions, protect a daily streak, and review what they actually studied.
+
+It includes a Textual terminal app, cloud sync, subject/topic tracking, review notes, a timetable, achievements, and a companion browser extension for Chrome, Firefox, and Zen.
 
 ## Preview
 
@@ -12,7 +14,7 @@ StudyStreak is a terminal study tracker for building consistent study habits. It
   <img src="https://raw.githubusercontent.com/Chi-ChunL/StudyStreak/main/assets/studystreak-dashboard.png" alt="StudyStreak dashboard screenshot" width="85%">
 </p>
 
-## Install
+## Install The Terminal App
 
 StudyStreak requires Python 3.10 or newer.
 
@@ -23,37 +25,58 @@ pip install studystreak
 Open the app:
 
 ```bash
+studystreak
+```
+
+You can also launch it explicitly:
+
+```bash
 studystreak ui
 ```
 
-Update to the newest PyPI version:
+Update later:
 
 ```bash
 pip install --upgrade studystreak
 ```
 
-## Quick Start
+## First Setup
 
-1. Run `studystreak ui`.
+1. Open `studystreak`.
 2. Create an account or log in.
-3. Add your subjects in Settings > Subjects.
-4. Add the websites you use for each subject.
-5. Log a study session, start Focus Mode, or add timetable sessions.
-6. Press Sync Now if you want the terminal app and browser extension to share cloud data.
+3. Choose whether to start the optional guided tour.
+4. Go to `Settings > Subjects`.
+5. Add your subjects, study websites, and topics.
+6. Press `Settings > Sync > Sync Now`.
+7. Install the browser extension and log in with the same account.
+8. Use Home, Sessions, Timetable, or Focus to start studying.
 
-StudyStreak can be used locally, but account login enables cloud sync, Chrome/Firefox extension sync, leaderboard streaks, and cross-device data.
+The app still works locally, but logging in enables cloud sync, browser extension sync, leaderboard data, cross-device setup, and browser focus-quality summaries.
 
-## Main App Guide
+## Main App
 
-### Dashboard
+### Home
 
-The dashboard shows your current streak, whether today is protected, minutes studied today, weekly goal progress, setup checklist, and recent sessions.
+Home is the quick command center. It shows:
 
-### Subjects and Websites
+- account, server, sync, streak, and weekly goal status
+- a next best action based on your recent study data
+- visible buttons for `Enter Prepare Focus`, `F Focus`, and `S Skip`
+- focus readiness, todo/review status, today's wins, and weak topics
+- a setup checklist that disappears as you complete setup
 
-Open Settings > Subjects to add subjects and save focus websites for each subject. These websites are used by Focus Mode and by the browser extension.
+### Subjects
 
-Each subject can have multiple websites. For example:
+Subjects are the base of the app. Each subject can have:
+
+- study websites
+- topics
+- study history
+- focus-quality summaries from the browser extension
+
+Use `Settings > Subjects` to add, edit, or delete subjects. Websites and topics sync to the browser extension.
+
+Example websites:
 
 ```text
 https://pearsonactivelearn.com
@@ -61,101 +84,148 @@ https://quizlet.com
 https://senecalearning.com
 ```
 
-When synced, the extension can auto-fill websites for the selected subject. Websites saved in the extension can also sync back into the terminal app.
+Example topics:
 
-### Log Sessions
-
-Use the Session tab to log study manually. A session protects your streak for the day. StudyStreak prevents the same day from incorrectly becoming multiple streak days.
-
-You can also log from the command line:
-
-```bash
-studystreak log maths 30
-studystreak today
-studystreak streak
+```text
+Integration
+Circular motion
+Databases
+Organic chemistry
 ```
 
-### Manage Sessions
+### Sessions
 
-Use Manage Session to delete incorrect study sessions. If nothing is selected, the app shows a message instead of crashing.
+The `Sessions` tab combines logging and editing.
+
+Use `Log Session` to manually add study time with an optional topic and review note.
+
+Use `Edit Logs` to:
+
+- view session details
+- change subject, minutes, topic, or review note
+- delete incorrect sessions
+
+StudyStreak protects streaks by date, so logging twice on the same day does not incorrectly create a two-day streak.
+
+### Review Notes And Topics
+
+When you log a session or finish a focus session, you can add:
+
+- what topic you worked on
+- a short review note
+
+Those topics feed the Home review queue and weak-topic suggestions. This makes the app more useful over time without needing a separate revision tracker.
 
 ### Timetable
 
-Use Timetable to add planned study sessions. The browser extension can sync today's timetable and send browser notifications when a planned session starts.
+The `Timetable` tab lets you plan weekly study sessions by subject, day, start time, and duration.
+
+When synced, the browser extension can show today's sessions and send notifications when planned sessions come up.
 
 ### Focus Mode
 
-Focus Mode times a study session for a selected subject. If that subject has saved websites, the app can open all of them for you.
-
-Focus Mode also has Pomodoro 50/10:
-
-- Work runs for 50 minutes.
-- Break runs for 10 minutes.
-- Completed work blocks are logged automatically.
-- The cycle repeats until you stop focus.
-
-### Leaderboard
-
-The leaderboard shows users by current streak day. Focus sessions from the browser extension and sessions logged in the app both help protect the streak, but the same date only counts once.
-
-### Achievements
-
-Achievements unlock as you build subjects, log sessions, use focus mode, and keep your streak going.
-
-### Settings and Sync
-
-Use Settings > Sync > Sync Now to upload local changes and download browser focus updates, subject websites, and other cloud-backed data.
-
-Cloud sync includes:
-
-- encrypted profile data
-- subjects
-- subject websites
-- timetable sessions
-- current streak for the leaderboard
-- browser focus-quality summaries
-
-## Browser Extension
-
-The companion browser extension adds focus-quality tracking and tighter study workflows.
+The `Focus` tab runs focused study sessions from inside the terminal.
 
 It can:
 
+- choose a subject and optional topic
+- auto-fill saved websites for that subject
+- open all saved websites
+- run a custom countdown
+- run Pomodoro 50/10
+- show a minimal focus screen with a large timer
+- auto-log completed Pomodoro work blocks
+- ask for a review note at the end
+
+### Leaderboard
+
+The leaderboard loads from the StudyStreak server and has Today, This week, and All time views.
+
+Rows show study minutes and current streak days, so users can see both effort and consistency.
+
+### Achievements
+
+Achievements unlock as you add subjects, log sessions, use focus mode, protect streaks, and build better study habits. Sounds and notifications can be controlled in Settings.
+
+### Settings
+
+Settings contains:
+
+- `Weekly Goal`: set the weekly study target
+- `Setup Health`: see what is still missing
+- `Sync`: upload and download cloud data
+- `Tour`: replay or complete the guided tour
+- `Updates`: check PyPI for a newer app version
+- `Extension`: open browser extension setup guidance
+- `Appearance`: switch dark/light mode
+- `Sounds`: control UI, focus, streak, achievement, and notification sounds
+- `Subjects`: edit subjects, websites, and topics
+- `Data & Privacy`: export data, clear focus quality, or reset local data
+- `Focus Import`: offline/debug fallback for signed browser focus JSON
+
+## Browser Extension
+
+StudyStreak Companion adds browser-based focus tracking and overlays.
+
+It can:
+
+- sync subjects, websites, topics, timetable sessions, and todos
 - start and stop focus sessions
-- show a timer overlay on study webpages
-- show Work or Break during Pomodoro 50/10
-- upload each completed Pomodoro work block
-- detect focused, distracted, and idle time
+- show a movable timer overlay on webpages
+- show a movable todo overlay on webpages
+- let you check off todos from the overlay
+- clear completed todo tasks
+- track focused, distracted, and idle time
 - use an 8 minute idle threshold
-- sync full focus-quality summaries to the app
-- sync subject websites from the account
-- save subject websites back to the server
-- remember the last selected focus subject
-- show today's timetable sessions
-- send timetable notifications
-- use Strict Focus to redirect distracting websites to one of the allowed websites
+- run Pomodoro 50/10 with Work and Break labels
+- upload completed Pomodoro work blocks
+- ask for a topic and review note after stopping focus
+- sync focus sessions and review notes back to the terminal app
+- sync full focus-quality summaries
+- use Strict Focus to redirect distracting sites to an allowed study site
+- show timetable reminders from the account
 
-### Chrome Install
+Reminder, Focus, Todo, and Settings stay disabled until you log in, so account data does not carry across users by mistake.
 
-Clone the repository:
+## Install The Extension
+
+### Firefox
+
+Install from Firefox Add-ons:
+
+```text
+https://addons.mozilla.org/firefox/addon/studystreak-companion/
+```
+
+Then open the extension, log in, and press `Refresh Subjects`.
+
+### Zen Browser
+
+Zen is Firefox-based, so use the Firefox Add-ons version when possible.
+
+If you are testing locally, follow the temporary install steps below.
+
+### Chrome
+
+Chrome currently uses the local development folder.
 
 ```bash
 git clone https://github.com/Chi-ChunL/StudyStreak.git
 cd StudyStreak
 ```
 
-Load the extension:
+Then:
 
 1. Open `chrome://extensions`.
 2. Turn on Developer mode.
-3. Click Load unpacked.
+3. Click `Load unpacked`.
 4. Choose the `chrome_extension` folder.
-5. Open the StudyStreak extension popup and log in.
-6. Click Refresh Subjects.
+5. Open StudyStreak Companion.
+6. Log in and press `Refresh Subjects`.
 
-### Firefox or Zen Temporary Install
+### Temporary Firefox Or Zen Install
 
-Firefox and Zen need the Firefox-specific extension folder:
+Use this for local testing:
 
 ```bash
 python scripts/build_firefox_extension.py
@@ -164,30 +234,48 @@ python scripts/build_firefox_extension.py
 Then:
 
 1. Open `about:debugging#/runtime/this-firefox`.
-2. Click Load Temporary Add-on.
+2. Click `Load Temporary Add-on`.
 3. Choose `dist/firefox_extension/manifest.json`.
-4. Open the StudyStreak extension popup and log in.
-5. Click Refresh Subjects.
+4. Open StudyStreak Companion.
+5. Log in and press `Refresh Subjects`.
 
 Temporary add-ons disappear after restarting Firefox or Zen.
 
-## Using the Extension
+## Extension Workflow
 
-1. Log in with the same StudyStreak account as the terminal app.
-2. Press Refresh Subjects.
+1. Log in with your StudyStreak account.
+2. Press `Refresh Subjects`.
 3. Choose a subject.
-4. Check that the Focus websites box fills with that subject's saved websites.
-5. Edit the websites if needed and press Save Focus Websites.
-6. Turn on Strict Focus if you only want allowed websites during focus.
-7. Turn on Pomodoro 50/10 if you want automatic 50 minute work blocks and 10 minute breaks.
-8. Press Start Focus.
-9. Use Stop Focus in the popup or on the overlay.
-
-When focus stops, the extension reports whether leaderboard upload and quality sync succeeded.
+4. Check that Focus websites auto-fill.
+5. Save websites if you changed them.
+6. Add todo tasks if you want the overlay checklist.
+7. Enable Strict Focus or Pomodoro if needed.
+8. Press `Start Focus`.
+9. Use the webpage overlay or popup to stop focus.
+10. Add a topic/review note, or skip it.
+11. Open the terminal app and press `Settings > Sync > Sync Now`.
 
 ## Cloud Sync
 
-StudyStreak uses `https://chichi.hackclub.app` by default.
+StudyStreak uses this server by default:
+
+```text
+https://chichi.hackclub.app
+```
+
+Cloud sync currently covers:
+
+- encrypted profile backup data
+- streak state
+- subjects
+- subject websites
+- subject topics
+- timetable sessions
+- todo tasks
+- focus sessions
+- review notes
+- browser focus-quality summaries
+- leaderboard data
 
 If you run your own backend, set:
 
@@ -195,27 +283,20 @@ If you run your own backend, set:
 STUDYSTREAK_API_URL=https://your-backend-url
 ```
 
-Then start the app normally:
+Then launch the app normally:
 
 ```bash
-studystreak ui
+studystreak
 ```
 
-The browser extension currently points at the deployed StudyStreak server. If you want it to use a different backend, change `API_BASE_URL` in `chrome_extension/background.js` before loading or packaging the extension.
+The browser extension points at the deployed StudyStreak server by default. To use a different backend, change `API_BASE_URL` in `chrome_extension/background.js` before loading or packaging the extension.
 
-## Local Data
+## Command Line
 
-Installed StudyStreak stores app data in the user app data folder, not inside the project directory. This keeps normal installs cleaner and avoids losing data when the package is updated.
-
-On Windows, the app data is under:
-
-```text
-%LOCALAPPDATA%\StudyStreak
-```
-
-## Commands
+Most users should use the TUI, but quick commands still exist:
 
 ```bash
+studystreak
 studystreak ui
 studystreak log maths 30
 studystreak today
@@ -226,7 +307,43 @@ studystreak logout
 studystreak users
 ```
 
-Most users should use `studystreak ui`; the other commands are useful for quick logging and account checks.
+## Local Data
+
+StudyStreak stores data in the user app-data folder instead of the project folder.
+
+Windows:
+
+```text
+%LOCALAPPDATA%\StudyStreak
+```
+
+macOS:
+
+```text
+~/Library/Application Support/StudyStreak
+```
+
+Linux:
+
+```text
+~/.local/share/StudyStreak
+```
+
+You can override this with:
+
+```bash
+STUDYSTREAK_DATA_DIR=/path/to/data
+```
+
+## Privacy
+
+StudyStreak stores local study data on your machine.
+
+When you use cloud sync, StudyStreak sends the data needed to keep the terminal app and browser extension connected. Profile backup data is encrypted before upload. Some browser-extension sync fields are stored plainly so the extension can read them, such as subjects, websites, topics, timetable sessions, todos, focus sessions, and focus-quality summaries.
+
+The extension may collect page domain activity during an active focus session so it can calculate focused, distracted, and idle time. It does not need this tracking when focus mode is stopped.
+
+Offline signed JSON import remains available in `Settings > Focus Import` as a fallback/debug path.
 
 ## Development
 
@@ -246,7 +363,7 @@ pip install -e .
 Run the app:
 
 ```bash
-studystreak ui
+studystreak
 ```
 
 Run tests:
@@ -255,7 +372,7 @@ Run tests:
 python -m unittest discover -s tests
 ```
 
-Build the package:
+Build the Python package:
 
 ```bash
 python -m build
@@ -267,45 +384,76 @@ Build the Firefox/Zen extension folder:
 python scripts/build_firefox_extension.py
 ```
 
+Create a Firefox upload ZIP on Windows:
+
+```powershell
+Compress-Archive -Path dist\firefox_extension\* -DestinationPath dist\studystreak-firefox.zip -Force
+```
+
+Useful JavaScript checks:
+
+```bash
+node --check chrome_extension/background.js
+node --check chrome_extension/popup.js
+node --check chrome_extension/focus_overlay.js
+```
+
 ## Backend Development
 
-Install backend requirements, then run the FastAPI server:
+Install backend requirements:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Run the FastAPI server:
+
+```bash
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-The backend creates its SQLite tables on startup.
+The backend creates and updates its SQLite tables on startup.
 
 ## Troubleshooting
 
-### The extension has no subjects
+### The terminal app has no browser subjects
 
-Log in to the extension, then click Refresh Subjects. In the terminal app, add subjects in Settings > Subjects and press Sync Now.
+Add subjects in `Settings > Subjects`, then press `Settings > Sync > Sync Now`. In the extension, press `Refresh Subjects`.
 
-### Websites saved in the extension do not show in the app
+### Extension login says network error
 
-Open the terminal app and press Settings > Sync > Sync Now, or open Settings > Subjects again. The app downloads subject websites from the server.
+Check that the server is online, your internet is working, and the extension has been updated/reloaded. Firefox users should use the Add-ons version or rebuild the Firefox extension folder after code changes.
 
-### Firefox says the extension is temporary
+### Todo overlay does not appear
 
-That is expected when loading through `about:debugging`. For a permanent Firefox or Zen install, use a signed self-distributed `.xpi`.
+Log in first, enable `Settings > Show todo overlay` in the extension, and open a normal `http://` or `https://` webpage. Browser pages like `about:`, `chrome://`, `moz-extension://`, PDFs, and store pages can block overlays.
 
-### The overlay does not appear immediately in Firefox or Zen
+### Focus overlay disappears on page changes
 
-Open or refresh a normal website tab. Browser-protected pages such as `about:`, `chrome://`, and extension pages do not allow the overlay.
+Reload the extension and use the latest Firefox/Chrome build. The overlay is injected into normal webpages and repaired when the page DOM changes, but browser-protected pages still cannot show it.
 
-### Sync failed
+### Websites saved in the extension do not appear in the app
 
-Check that you are logged in, the backend is online, and `STUDYSTREAK_API_URL` points to the right server if you are using a custom backend.
+Open the terminal app and press `Settings > Sync > Sync Now`, then check `Settings > Subjects`.
 
-## Privacy
+### Review notes do not appear in Sessions
 
-StudyStreak stores local study data on your machine. Cloud sync sends the data needed for account sync, leaderboard streaks, timetable reminders, subject websites, and focus-quality summaries.
+Sync the terminal app after stopping focus in the extension. Review notes are attached to focus sessions when you save the review panel.
 
-The browser extension may send focus summary data to the StudyStreak backend when you are logged in. Signed JSON export remains available as an offline/debug fallback.
+### Firefox says the temporary add-on disappeared
+
+That is normal for `about:debugging` temporary installs. Use the Firefox Add-ons version for a permanent install.
+
+### The app feels out of date
+
+Run:
+
+```bash
+pip install --upgrade studystreak
+```
+
+You can also check inside `Settings > Updates`.
 
 ## Status
 
-StudyStreak is in active development. Expect improvements to packaging, sync, browser support, and onboarding over time.
+StudyStreak is in active development. The goal is to stay terminal-focused while making setup, browser sync, focus tracking, and review workflows easier for everyday students.

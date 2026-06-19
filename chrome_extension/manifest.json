@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "StudyStreak Companion",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Daily study reminders and focus quality tracking for StudyStreak",
     "permissions": ["alarms", "notifications", "storage", "tabs", "idle", "scripting"],
     "host_permissions": [
