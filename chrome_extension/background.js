@@ -155,8 +155,122 @@ const ICON_URL = chrome.runtime.getURL("icon128.png");
 let pomodoroTransitionRunning = false;
 const strictFocusRedirects = new Map();
 
+const storageArea = chrome.storage.local;
+const alarmApi = chrome.alarms;
+const tabApi = chrome.tabs;
+const notificationApi = chrome.notifications;
+const idleApi = chrome.idle;
+
+function chromeApiCall(api, methodName, ...args) {
+    return new Promise((resolve, reject) => {
+        const method = api?.[methodName];
+
+        if (typeof method !== "function") {
+            reject(new Error(`Browser API unavailable: ${methodName}`));
+            return;
+        }
+
+        let settled = false;
+        const finish = (error, value) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+
+            if (error) {
+                reject(error);
+                return;
+            }
+
+            resolve(value);
+        };
+
+        const callback = (...callbackValues) => {
+            const runtimeError = chrome.runtime.lastError;
+
+            if (runtimeError) {
+                finish(new Error(runtimeError.message));
+                return;
+            }
+
+            finish(
+                null,
+                callbackValues.length <= 1 ? callbackValues[0] : callbackValues
+            );
+        };
+
+        try {
+            const maybePromise = method.call(api, ...args, callback);
+
+            if (maybePromise && typeof maybePromise.then === "function") {
+                maybePromise.then(
+                    (value) => finish(null, value),
+                    (error) => finish(error)
+                );
+            }
+        } catch (callbackError) {
+            try {
+                const maybePromise = method.call(api, ...args);
+
+                if (maybePromise && typeof maybePromise.then === "function") {
+                    maybePromise.then(
+                        (value) => finish(null, value),
+                        (error) => finish(error)
+                    );
+                    return;
+                }
+
+                finish(null, maybePromise);
+            } catch {
+                finish(callbackError);
+            }
+        }
+    });
+}
+
+function storageGet(defaults) {
+    return chromeApiCall(storageArea, "get", defaults);
+}
+
+function storageSet(values) {
+    return chromeApiCall(storageArea, "set", values);
+}
+
+function alarmsClear(name) {
+    return chromeApiCall(alarmApi, "clear", name);
+}
+
+function alarmsCreate(name, options) {
+    return chromeApiCall(alarmApi, "create", name, options);
+}
+
+function alarmsGetAll() {
+    return chromeApiCall(alarmApi, "getAll");
+}
+
+function tabsQuery(queryInfo) {
+    return chromeApiCall(tabApi, "query", queryInfo);
+}
+
+function tabsGet(tabId) {
+    return chromeApiCall(tabApi, "get", tabId);
+}
+
+function tabsUpdate(tabId, updateProperties) {
+    return chromeApiCall(tabApi, "update", tabId, updateProperties);
+}
+
+function notificationsCreate(options) {
+    return chromeApiCall(notificationApi, "create", options);
+}
+
+function idleQueryState(detectionIntervalInSeconds) {
+    return chromeApiCall(idleApi, "queryState", detectionIntervalInSeconds);
+}
+
 async function getSettings() {
-    const saved = await chrome.storage.local.get(DEFAULT_SETTINGS);
+    const saved = await storageGet(DEFAULT_SETTINGS);
 
     return {
         ...DEFAULT_SETTINGS,
@@ -481,7 +595,7 @@ async function refreshSubjectsFromServer() {
         settings.selectedFocusSubject || settings.focusSubject
     );
 
-    await chrome.storage.local.set({
+    await storageSet({
         syncedSubjects: subjects,
         syncedSubjectWebsites: subjectWebsites,
         syncedSubjectTopics: subjectTopics,
@@ -542,7 +656,7 @@ async function saveSubjectWebsitesForSubject(subject, websites) {
 
     await uploadSubjectWebsitesToServer(settings.serverToken, subjectWebsites);
 
-    await chrome.storage.local.set({
+    await storageSet({
         syncedSubjectWebsites: subjectWebsites,
         selectedFocusSubject: cleanSubject
     });
@@ -657,7 +771,7 @@ async function setSyncStatus(state, message) {
         at: new Date().toISOString()
     };
 
-    await chrome.storage.local.set({ lastSyncStatus });
+    await storageSet({ lastSyncStatus });
     return lastSyncStatus;
 }
 
@@ -677,7 +791,7 @@ async function storeQueuedSummary(summary) {
         cleanSummary
     ]);
 
-    await chrome.storage.local.set({
+    await storageSet({
         offlineUploadQueue: queue
     });
     await setSyncStatus("pending", `${queue.length} focus session(s) waiting to upload.`);
@@ -727,7 +841,7 @@ async function retryOfflineUploads() {
         try {
             await uploadTodoItemsToServer(settings.serverToken, settings.todoItems);
             todoSynced = true;
-            await chrome.storage.local.set({ todoSyncPending: false });
+            await storageSet({ todoSyncPending: false });
         } catch (error) {
             await setSyncStatus("pending", friendlyNetworkError(error, "Todo sync saved for retry."));
             return {
@@ -764,7 +878,7 @@ async function retryOfflineUploads() {
                 qualityUpload
             );
 
-            await chrome.storage.local.set(merged);
+            await storageSet(merged);
             uploadedCount += 1;
         } catch (error) {
             remaining.push({
@@ -779,7 +893,7 @@ async function retryOfflineUploads() {
         }
     }
 
-    await chrome.storage.local.set({
+    await storageSet({
         offlineUploadQueue: remaining
     });
 
@@ -811,7 +925,7 @@ async function saveTodoItemsWithSync(todoItems, settings) {
         ? "Todo list saved locally. Log in to sync."
         : "Todo list saved.";
 
-    await chrome.storage.local.set({
+    await storageSet({
         todoItems,
         todoSyncPending
     });
@@ -821,12 +935,12 @@ async function saveTodoItemsWithSync(todoItems, settings) {
             await uploadTodoItemsToServer(settings.serverToken, todoItems);
             todoSyncPending = false;
             syncMessage = "Todo list synced.";
-            await chrome.storage.local.set({ todoSyncPending: false });
+            await storageSet({ todoSyncPending: false });
             await setSyncStatus("synced", syncMessage);
         } catch (error) {
             todoSyncPending = true;
             syncMessage = friendlyNetworkError(error, "Todo list saved locally for retry.");
-            await chrome.storage.local.set({ todoSyncPending: true });
+            await storageSet({ todoSyncPending: true });
             await setSyncStatus("pending", syncMessage);
         }
     }
@@ -857,7 +971,7 @@ async function completeAllTodoItems() {
     }
 
     if (settings.focusActive) {
-        await chrome.storage.local.set({
+        await storageSet({
             completedTodoItems: cleanTodoItems([
                 ...settings.completedTodoItems,
                 ...completedItems
@@ -926,7 +1040,7 @@ async function uploadAndStoreCompletedSummary(completedSummary, settings) {
         ...(settings.focusHistory || [])
     ].slice(0, 3);
 
-    await chrome.storage.local.set({
+    await storageSet({
         lastCompletedFocusSession: completedSummaryWithUpload,
         focusHistory,
         completedTodoItems: []
@@ -1001,7 +1115,7 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
         nextHistory.unshift(updatedSummary);
     }
 
-    await chrome.storage.local.set({
+    await storageSet({
         lastCompletedFocusSession: (
             settings.lastCompletedFocusSession?.completedAt === cleanCompletedAt
                 ? updatedSummary
@@ -1058,7 +1172,7 @@ async function skipFocusReview(completedAt) {
         };
     });
 
-    await chrome.storage.local.set({
+    await storageSet({
         lastCompletedFocusSession,
         focusHistory
     });
@@ -1138,11 +1252,11 @@ async function loginToServer(username, password) {
     }
 
     if (!sameAccount) {
-        await chrome.alarms.clear(FOCUS_TICK_ALARM);
+        await alarmsClear(FOCUS_TICK_ALARM);
         await clearTimetableReminders();
     }
 
-    await chrome.storage.local.set({
+    await storageSet({
         serverUsername: cleanUsername,
         serverToken: data.access_token,
         syncedSubjects: subjects,
@@ -1207,10 +1321,10 @@ async function loginToServer(username, password) {
 }
 
 async function logoutFromServer() {
-    await chrome.alarms.clear(FOCUS_TICK_ALARM);
+    await alarmsClear(FOCUS_TICK_ALARM);
     await clearTimetableReminders();
 
-    await chrome.storage.local.set({
+    await storageSet({
         serverUsername: "",
         serverToken: "",
         focusActive: false,
@@ -1353,7 +1467,7 @@ async function injectFocusOverlayIntoTab(tabId, url = "") {
 
     if (!targetUrl) {
         try {
-            const tab = await chrome.tabs.get(tabId);
+            const tab = await tabsGet(tabId);
             targetUrl = tab?.url || "";
         } catch {
             return;
@@ -1420,7 +1534,7 @@ function scheduleOverlayInjection(tabId, delayMs = 0) {
 }
 
 async function injectFocusOverlayIntoOpenTabs() {
-    const tabs = await chrome.tabs.query({});
+    const tabs = await tabsQuery({});
 
     await Promise.all(
         tabs
@@ -1503,7 +1617,7 @@ function strictFocusRedirectIsPending(tabId) {
 }
 
 async function getActiveTabDomain() {
-    const [tab] = await chrome.tabs.query({
+    const [tab] = await tabsQuery({
         active: true,
         lastFocusedWindow: true
     });
@@ -1512,7 +1626,7 @@ async function getActiveTabDomain() {
 }
 
 async function getCurrentFocusCategory(settings) {
-    const idleState = await chrome.idle.queryState(IDLE_DETECTION_SECONDS);
+    const idleState = await idleQueryState(IDLE_DETECTION_SECONDS);
 
     if (idleState !== "active") {
         return { category: "idle", domain: "idle" };
@@ -1586,7 +1700,7 @@ async function getFreshFocusStats(settings) {
 }
 
 async function showPomodoroNotification(title, message) {
-    await chrome.notifications.create({
+    await notificationsCreate({
         type: "basic",
         iconUrl: ICON_URL,
         title,
@@ -1605,7 +1719,7 @@ async function recordFocusElapsed() {
     const now = Date.now();
 
     if (settings.pomodoroEnabled && settings.pomodoroPhase === "break") {
-        await chrome.storage.local.set({
+        await storageSet({
             focusLastCheckedAt: now
         });
 
@@ -1640,7 +1754,7 @@ async function recordFocusElapsed() {
     stats.lastCategory = current.category;
     stats.lastDomain = current.domain;
 
-    await chrome.storage.local.set({
+    await storageSet({
         focusStats: stats,
         focusLastCheckedAt: now
     });
@@ -1668,7 +1782,7 @@ async function startFocus(subject, pomodoroEnabled = false) {
 
     const stats = await getFreshFocusStats(focusSettings);
 
-    await chrome.storage.local.set({
+    await storageSet({
         focusActive: true,
         focusSubject: cleanSubject,
         selectedFocusSubject: cleanSubject,
@@ -1682,8 +1796,8 @@ async function startFocus(subject, pomodoroEnabled = false) {
         pomodoroWorkBlocksCompleted: 0
     });
 
-    await chrome.alarms.clear(FOCUS_TICK_ALARM);
-    await chrome.alarms.create(FOCUS_TICK_ALARM, {
+    await alarmsClear(FOCUS_TICK_ALARM);
+    await alarmsCreate(FOCUS_TICK_ALARM, {
         periodInMinutes: 1
     });
 
@@ -1750,7 +1864,7 @@ async function handlePomodoroTick(settings = null) {
                 focusLastCheckedAt: now
             };
 
-            await chrome.storage.local.set({
+            await storageSet({
                 pomodoroPhase: "break",
                 pomodoroPhaseStartedAt: now,
                 pomodoroPhaseDurationSeconds: POMODORO_BREAK_SECONDS,
@@ -1779,7 +1893,7 @@ async function handlePomodoroTick(settings = null) {
         };
         const freshStats = await getFreshFocusStats(nextSettings);
 
-        await chrome.storage.local.set({
+        await storageSet({
             pomodoroPhase: "work",
             pomodoroPhaseStartedAt: now,
             pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
@@ -1848,8 +1962,8 @@ async function stopFocus() {
         );
     }
 
-    await chrome.alarms.clear(FOCUS_TICK_ALARM);
-    await chrome.storage.local.set({
+    await alarmsClear(FOCUS_TICK_ALARM);
+    await storageSet({
         focusActive: false,
         focusLastCheckedAt: null,
         selectedFocusSubject: settings.focusSubject || settings.selectedFocusSubject || "",
@@ -1890,12 +2004,12 @@ function getNextTimetableTime(dayValue, timeValue) {
 }
 
 async function clearTimetableReminders() {
-    const alarms = await chrome.alarms.getAll();
+    const alarms = await alarmsGetAll();
 
     await Promise.all(
         alarms
             .filter((alarm) => alarm.name.startsWith(TIMETABLE_ALARM_PREFIX))
-            .map((alarm) => chrome.alarms.clear(alarm.name))
+            .map((alarm) => alarmsClear(alarm.name))
     );
 }
 
@@ -1909,20 +2023,22 @@ async function scheduleTimetableReminders(timetable = null) {
         return;
     }
 
-    sessions.forEach((session, index) => {
-        chrome.alarms.create(`${TIMETABLE_ALARM_PREFIX}${index}`, {
-            when: getNextTimetableTime(session.day, session.start_time),
-            periodInMinutes: 10080
-        });
-    });
+    await Promise.all(
+        sessions.map((session, index) =>
+            alarmsCreate(`${TIMETABLE_ALARM_PREFIX}${index}`, {
+                when: getNextTimetableTime(session.day, session.start_time),
+                periodInMinutes: 10080
+            })
+        )
+    );
 }
 
 async function scheduleDailyReminder() {
-    await chrome.alarms.clear(DAILY_REMINDER_ALARM);
+    await alarmsClear(DAILY_REMINDER_ALARM);
 }
 
 async function showStudyReminder(isTest = false) {
-    await chrome.notifications.create({
+    await notificationsCreate({
         type: "basic",
         iconUrl: ICON_URL,
         title: isTest ? "StudyStreak test reminder" : "StudyStreak reminder",
@@ -1940,7 +2056,7 @@ async function showTimetableReminder(alarmName) {
         return;
     }
 
-    await chrome.notifications.create({
+    await notificationsCreate({
         type: "basic",
         iconUrl: ICON_URL,
         title: "StudyStreak timetable",
@@ -1956,7 +2072,7 @@ async function restoreExtension() {
     const settings = await getSettings();
 
     if (settings.focusActive) {
-        await chrome.alarms.create(FOCUS_TICK_ALARM, {
+        await alarmsCreate(FOCUS_TICK_ALARM, {
             periodInMinutes: 1
         });
     }
@@ -2035,7 +2151,7 @@ chrome.idle.onStateChanged.addListener(() => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     async function handleMessage() {
         if (message.type === "clearFocusHistory") {
-            await chrome.storage.local.set({
+            await storageSet({
                 focusHistory: [],
                 lastCompletedFocusSession: null
             });
@@ -2074,7 +2190,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 nextSettings.todoOverlayEnabled = nextSettings.todoOverlayEnabled !== false;
             }
 
-            await chrome.storage.local.set(nextSettings);
+            await storageSet(nextSettings);
             await scheduleDailyReminder();
             await scheduleTimetableReminders();
 
@@ -2097,7 +2213,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (message.type === "setTodoOverlayEnabled") {
-            await chrome.storage.local.set({
+            await storageSet({
                 todoOverlayEnabled: message.enabled !== false
             });
             await injectFocusOverlayIntoOpenTabs();
@@ -2206,7 +2322,7 @@ async function enforceStrictFocus(settings = null) {
         return;
     }
 
-    const [tab] = await chrome.tabs.query({
+    const [tab] = await tabsQuery({
         active: true,
         lastFocusedWindow: true
     });
@@ -2245,7 +2361,7 @@ async function enforceStrictFocus(settings = null) {
         startedAt: Date.now()
     });
 
-    await chrome.tabs.update(tab.id, {
+    await tabsUpdate(tab.id, {
         url: getStrictFocusBlockedUrl(redirectUrl, settings.focusSubject)
     });
 }

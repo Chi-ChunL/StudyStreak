@@ -67,6 +67,41 @@
         });
     }
 
+    function sendRuntimeMessage(message) {
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (error, response) => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve(response);
+            };
+
+            try {
+                const possiblePromise = chrome.runtime.sendMessage(message, (response) => {
+                    const error = chrome.runtime.lastError;
+                    finish(error ? new Error(error.message) : null, response);
+                });
+
+                if (possiblePromise?.then) {
+                    possiblePromise.then(
+                        (response) => finish(null, response),
+                        (error) => finish(error)
+                    );
+                }
+            } catch (error) {
+                finish(error);
+            }
+        });
+    }
+
     function getMountRoot() {
         return document.documentElement || document.body;
     }
@@ -720,7 +755,7 @@
         renderTodoOverlay();
 
         try {
-            await chrome.runtime.sendMessage({
+            await sendRuntimeMessage({
                 type: "saveTodoItems",
                 todoItems: nextItems
             });
@@ -751,7 +786,7 @@
         renderTodoOverlay();
 
         try {
-            await chrome.runtime.sendMessage({
+            await sendRuntimeMessage({
                 type: "completeAllTodoItems"
             });
         } catch {
@@ -1015,7 +1050,7 @@
         setOverlayStatus("Saving review...", "pending");
 
         try {
-            const result = await chrome.runtime.sendMessage({
+            const result = await sendRuntimeMessage({
                 type: "saveFocusReview",
                 completedAt: pendingReviewSummary.completedAt,
                 topic,
@@ -1047,7 +1082,7 @@
 
         if (pendingReviewSummary?.completedAt) {
             try {
-                await chrome.runtime.sendMessage({
+                await sendRuntimeMessage({
                     type: "skipFocusReview",
                     completedAt: pendingReviewSummary.completedAt
                 });
@@ -1072,7 +1107,7 @@
         setOverlayStatus("Stopping focus and uploading...", "pending");
 
         try {
-            const summary = await chrome.runtime.sendMessage({ type: "stopFocus" });
+            const summary = await sendRuntimeMessage({ type: "stopFocus" });
             const result = getStopResultMessage(summary);
             button.textContent = result.buttonText;
             setOverlayStatus(result.text, result.type);

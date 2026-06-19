@@ -54,6 +54,41 @@ const homeMode = document.querySelector("#home-mode");
 const homeTodoSummary = document.querySelector("#home-todo-summary");
 const homeTodaySummary = document.querySelector("#home-today-summary");
 
+function sendRuntimeMessage(message) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (error, response) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            if (error) {
+                reject(error);
+                return;
+            }
+
+            resolve(response);
+        };
+
+        try {
+            const possiblePromise = chrome.runtime.sendMessage(message, (response) => {
+                const error = chrome.runtime.lastError;
+                finish(error ? new Error(error.message) : null, response);
+            });
+
+            if (possiblePromise?.then) {
+                possiblePromise.then(
+                    (response) => finish(null, response),
+                    (error) => finish(error)
+                );
+            }
+        } catch (error) {
+            finish(error);
+        }
+    });
+}
+
 let latestCompletedFocusSession = null;
 let currentSettings = {
     serverUsername: "",
@@ -576,7 +611,7 @@ function renderTodoList(items = currentSettings.todoItems) {
 async function saveTodoItems(items, message = "Todo list saved.") {
     const safeItems = cleanTodoItems(items);
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "saveTodoItems",
         todoItems: safeItems
     });
@@ -798,7 +833,7 @@ function setAccountGate(settings) {
 }
 
 async function requireLogin() {
-    const state = await chrome.runtime.sendMessage({
+    const state = await sendRuntimeMessage({
         type: "getCompanionState"
     });
 
@@ -819,7 +854,7 @@ async function requireLogin() {
 }
 
 async function refreshLocalStateFromBackground() {
-    const state = await chrome.runtime.sendMessage({
+    const state = await sendRuntimeMessage({
         type: "getCompanionState"
     });
 
@@ -850,7 +885,7 @@ async function retrySyncNow(showMessage = true) {
     retrySyncButton.disabled = true;
     syncStatusLabel.textContent = "Retrying sync...";
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "retryOfflineUploads"
     });
 
@@ -865,7 +900,7 @@ async function retrySyncNow(showMessage = true) {
 
 async function loadSettings() {
     try {
-        const state = await chrome.runtime.sendMessage({
+        const state = await sendRuntimeMessage({
             type: "getCompanionState"
         });
 
@@ -908,7 +943,7 @@ async function loadSettings() {
         console.error(error);
         renderFocusSummary(EMPTY_SUMMARY);
         renderAccount({});
-        statusText.textContent = "Reload the extension in chrome://extensions.";
+        statusText.textContent = `Reload the extension. ${error?.message || "Background did not respond."}`;
     }
 }
 
@@ -921,7 +956,7 @@ async function loginToServer() {
         return;
     }
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "loginToServer",
         username,
         password
@@ -942,7 +977,7 @@ async function loginToServer() {
 }
 
 async function logoutFromServer() {
-    await chrome.runtime.sendMessage({ type: "logoutFromServer"});
+    await sendRuntimeMessage({ type: "logoutFromServer"});
     loginPassword.value = "";
     currentSettings = {
         ...currentSettings,
@@ -979,7 +1014,7 @@ async function refreshSubjects() {
         return;
     }
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "refreshSubjects"
     });
 
@@ -1019,7 +1054,7 @@ async function saveSettings(showMessage = true) {
         return;
     }
 
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
         type: "saveSettings",
         settings: {
             remindersEnabled: remindersEnabled.checked,
@@ -1048,7 +1083,7 @@ async function saveReminderToggle() {
         return;
     }
 
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
         type: "saveSettings",
         settings: {
             remindersEnabled: remindersEnabled.checked,
@@ -1066,7 +1101,7 @@ async function saveReminderToggle() {
 }
 
 async function saveTodoOverlayToggle() {
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "setTodoOverlayEnabled",
         enabled: todoOverlayEnabled.checked
     });
@@ -1087,7 +1122,7 @@ async function rememberSelectedSubject(subject) {
     const cleanSubject = String(subject || "").trim().toLowerCase();
     currentSettings.selectedFocusSubject = cleanSubject;
 
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
         type: "saveSettings",
         settings: {
             selectedFocusSubject: cleanSubject
@@ -1109,7 +1144,7 @@ async function saveFocusWebsites(showMessage = true) {
 
     const websites = parseDomains(allowedDomains.value);
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "saveSubjectWebsites",
         subject,
         websites
@@ -1142,7 +1177,7 @@ async function testNotification() {
         return;
     }
 
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
         type: "testNotification"
     });
 
@@ -1171,7 +1206,7 @@ async function startFocus() {
     }
 
     await saveSettings(false);
-    const summary = await chrome.runtime.sendMessage({
+    const summary = await sendRuntimeMessage({
         type: "startFocus",
         subject,
         pomodoroEnabled: pomodoroEnabledInput.checked
@@ -1189,12 +1224,12 @@ async function stopFocus() {
         return;
     }
 
-    const summary = await chrome.runtime.sendMessage({
+    const summary = await sendRuntimeMessage({
         type: "stopFocus"
     });
 
     renderFocusSummary(summary);
-    const state = await chrome.runtime.sendMessage({
+    const state = await sendRuntimeMessage({
         type: "getCompanionState"
     });
 
@@ -1241,7 +1276,7 @@ async function saveFocusReview() {
         return;
     }
 
-    const result = await chrome.runtime.sendMessage({
+    const result = await sendRuntimeMessage({
         type: "saveFocusReview",
         completedAt,
         topic: focusReviewTopic.value,
@@ -1251,7 +1286,7 @@ async function saveFocusReview() {
     if (result?.summary) {
         latestCompletedFocusSession = result.summary;
         renderCompletedSummary(result.summary);
-        const state = await chrome.runtime.sendMessage({
+        const state = await sendRuntimeMessage({
             type: "getCompanionState"
         });
         renderFocusHistory(state.settings.focusHistory);
@@ -1271,7 +1306,7 @@ async function skipFocusReview() {
     const completedAt = focusReviewPanel?.dataset.completedAt || "";
 
     if (completedAt) {
-        await chrome.runtime.sendMessage({
+        await sendRuntimeMessage({
             type: "skipFocusReview",
             completedAt
         });
@@ -1282,7 +1317,7 @@ async function skipFocusReview() {
 }
 
 async function refreshFocusStatus() {
-    const summary = await chrome.runtime.sendMessage({
+    const summary = await sendRuntimeMessage({
         type: "getFocusStatus"
     });
 
@@ -1392,7 +1427,7 @@ async function clearFocusHistory() {
         return;
     }
 
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
         type: "clearFocusHistory"
     });
 
