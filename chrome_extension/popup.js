@@ -38,6 +38,21 @@ const focusReviewTopic = document.querySelector("#focus-review-topic");
 const focusReviewNote = document.querySelector("#focus-review-note");
 const saveFocusReviewButton = document.querySelector("#save-focus-review-button");
 const skipFocusReviewButton = document.querySelector("#skip-focus-review-button");
+const serverStatus = document.querySelector("#server-status");
+const syncAccountStatus = document.querySelector("#sync-account-status");
+const syncStatusLabel = document.querySelector("#sync-status-label");
+const retrySyncButton = document.querySelector("#retry-sync-button");
+const setupGuide = document.querySelector("#setup-guide");
+const homeKicker = document.querySelector("#home-kicker");
+const homeTitle = document.querySelector("#home-title");
+const homeDetail = document.querySelector("#home-detail");
+const homePrimaryButton = document.querySelector("#home-primary-button");
+const homeFocusSetupButton = document.querySelector("#home-focus-setup-button");
+const homeTodoButton = document.querySelector("#home-todo-button");
+const homeSubject = document.querySelector("#home-subject");
+const homeMode = document.querySelector("#home-mode");
+const homeTodoSummary = document.querySelector("#home-todo-summary");
+const homeTodaySummary = document.querySelector("#home-today-summary");
 
 let latestCompletedFocusSession = null;
 let currentSettings = {
@@ -50,7 +65,14 @@ let currentSettings = {
     syncedSubjectWebsites: {},
     syncedSubjectTopics: {},
     todoOverlayEnabled: true,
-    todoItems: []
+    todoItems: [],
+    todoSyncPending: false,
+    offlineUploadQueue: [],
+    lastSyncStatus: {
+        state: "idle",
+        message: "Not synced yet.",
+        at: null
+    }
 };
 
 const EMPTY_SUMMARY = {
@@ -125,6 +147,33 @@ function formatClock(seconds) {
     return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+function formatRelativeTime(isoValue) {
+    if (!isoValue) {
+        return "never";
+    }
+
+    const then = Date.parse(isoValue);
+
+    if (!Number.isFinite(then)) {
+        return "unknown";
+    }
+
+    const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+
+    if (seconds < 60) {
+        return "just now";
+    }
+
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes < 60) {
+        return `${minutes} min ago`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    return `${hours} hr ago`;
+}
+
 function formatFocusSummaryText(summary) {
     const lines = [
         "StudyStreak focus summary",
@@ -136,8 +185,17 @@ function formatFocusSummaryText(summary) {
         `Idle: ${formatSeconds(summary.idleSeconds)}`,
         `Server upload: ${formatServerUpload(summary)}`,
         `Quality sync: ${formatQualityUpload(summary)}`,
+        `Queue: ${summary.offlineQueued ? "Waiting for retry" : "none"}`,
         `Top distraction: ${summary.topDistractedDomain || "none"}`
     ];
+
+    const completedTodos = cleanTodoItems(summary.completedTodos || summary.todoSnapshot || [])
+        .filter((item) => item.done);
+
+    if (completedTodos.length > 0) {
+        lines.push("Completed todos:");
+        completedTodos.forEach((item) => lines.push(`- ${item.text}`));
+    }
 
     if (summary.reviewNote) {
         lines.push(`Review note: ${summary.reviewNote}`);
@@ -208,6 +266,20 @@ function hideFocusReviewPanel() {
     }
 }
 
+function getDefaultReviewNote(summary) {
+    const completedTodos = cleanTodoItems(summary?.completedTodos || summary?.todoSnapshot || [])
+        .filter((item) => item.done);
+
+    if (completedTodos.length === 0) {
+        return "";
+    }
+
+    return [
+        "Completed:",
+        ...completedTodos.map((item) => `- ${item.text}`)
+    ].join("\n");
+}
+
 function showFocusReviewPanel(summary) {
     if (!focusReviewPanel || !summary?.completedAt) {
         return;
@@ -230,7 +302,7 @@ function showFocusReviewPanel(summary) {
     });
 
     focusReviewTopic.value = topics.includes(summary.topic) ? summary.topic : "";
-    focusReviewNote.value = summary.reviewNote || "";
+    focusReviewNote.value = summary.reviewNote || getDefaultReviewNote(summary);
     focusReviewPanel.dataset.completedAt = summary.completedAt;
     focusReviewPanel.hidden = false;
 }
@@ -271,6 +343,184 @@ function renderTodaySessions(settings = currentSettings) {
         item.append(subject, details);
         todaySessions.append(item);
     });
+}
+
+function hasAnySavedWebsite(settings = currentSettings) {
+    const subjectWebsites = settings?.syncedSubjectWebsites || {};
+
+    return Object.values(subjectWebsites).some((websites) => {
+        return Array.isArray(websites) && websites.length > 0;
+    });
+}
+
+function setSetupStep(stepName, complete) {
+    const item = setupGuide?.querySelector(`[data-step="${stepName}"]`);
+
+    if (item) {
+        item.classList.toggle("complete", complete);
+    }
+}
+
+function renderSetupGuide(settings = currentSettings) {
+    if (!setupGuide) {
+        return;
+    }
+
+    const loggedIn = isLoggedIn(settings);
+    const hasSubjects = getSyncedSubjects(settings).length > 0;
+    const hasWebsites = hasAnySavedWebsite(settings);
+    const hasFocused = Boolean(settings.focusActive || settings.lastCompletedFocusSession);
+    const setupComplete = loggedIn && hasSubjects && hasWebsites && hasFocused;
+
+    setupGuide.hidden = setupComplete;
+
+    setSetupStep("login", loggedIn);
+    setSetupStep("subjects", hasSubjects);
+    setSetupStep("websites", hasWebsites);
+    setSetupStep("focus", hasFocused);
+}
+
+function renderSyncOverview(settings = currentSettings) {
+    const loggedIn = isLoggedIn(settings);
+    const queueCount = Array.isArray(settings.offlineUploadQueue)
+        ? settings.offlineUploadQueue.length
+        : 0;
+    const todoPending = Boolean(settings.todoSyncPending);
+    const syncStatus = settings.lastSyncStatus || {};
+    const state = queueCount > 0 || todoPending
+        ? "pending"
+        : (syncStatus.state || "idle");
+    const statusTextMap = {
+        synced: "Synced",
+        pending: "Pending upload",
+        failed: "Failed",
+        idle: "Idle"
+    };
+    const detail = syncStatus.message || "Not synced yet.";
+    const when = syncStatus.at ? ` (${formatRelativeTime(syncStatus.at)})` : "";
+
+    serverStatus.textContent = state === "failed" ? "Check needed" : "Ready";
+    serverStatus.className = state === "failed" ? "bad" : "good";
+    syncAccountStatus.textContent = loggedIn
+        ? `Logged in as ${settings.serverUsername}`
+        : "Logged out";
+    syncStatusLabel.textContent = `${statusTextMap[state] || "Idle"} - ${detail}${when}`;
+    syncStatusLabel.className = state;
+    retrySyncButton.disabled = !loggedIn || (queueCount === 0 && !todoPending && state !== "failed");
+
+    renderSetupGuide(settings);
+}
+
+function getPreferredSubject(settings = currentSettings) {
+    const subjects = getSyncedSubjects(settings);
+    const selectedSubject = String(
+        settings.selectedFocusSubject || settings.focusSubject || ""
+    ).trim().toLowerCase();
+    const matchingSubject = subjects.find((subject) => {
+        return String(subject).trim().toLowerCase() === selectedSubject;
+    });
+
+    if (matchingSubject) {
+        return matchingSubject;
+    }
+
+    const subjectWebsites = settings.syncedSubjectWebsites || {};
+    const subjectWithWebsite = subjects.find((subject) => {
+        const websites = subjectWebsites[subject] || subjectWebsites[String(subject).toLowerCase()];
+        return Array.isArray(websites) && websites.length > 0;
+    });
+
+    return subjectWithWebsite || subjects[0] || "";
+}
+
+function getHomeTodoText(settings = currentSettings) {
+    const todoItems = cleanTodoItems(settings.todoItems);
+    const remaining = todoItems.filter((item) => !item.done).length;
+
+    if (remaining === 0) {
+        return todoItems.length === 0 ? "No tasks yet" : "All done";
+    }
+
+    return `${remaining} active task${remaining === 1 ? "" : "s"}`;
+}
+
+function getHomeTodayText(settings = currentSettings) {
+    const sessions = getTodayTimetableSessions(settings);
+
+    if (sessions.length === 0) {
+        return "No sessions today";
+    }
+
+    const nextSession = sessions[0];
+    const subject = nextSession.subject || "session";
+    const startTime = nextSession.start_time || "--:--";
+    return `${startTime} ${subject}`;
+}
+
+function renderHomePanel(summary = EMPTY_SUMMARY) {
+    if (!homePrimaryButton) {
+        return;
+    }
+
+    const safeSummary = {
+        ...EMPTY_SUMMARY,
+        ...(summary || {})
+    };
+    const loggedIn = isLoggedIn(currentSettings);
+    const subjects = getSyncedSubjects(currentSettings);
+    const preferredSubject = getPreferredSubject(currentSettings);
+    const websites = getSubjectWebsites(preferredSubject, currentSettings);
+    const hasSubjects = subjects.length > 0;
+    const hasWebsites = websites.length > 0;
+    const modeText = currentSettings.pomodoroEnabled || safeSummary.pomodoroEnabled
+        ? "Pomodoro 50/10"
+        : "Custom focus";
+    let action = "start";
+
+    homeSubject.textContent = preferredSubject || "none";
+    homeMode.textContent = safeSummary.focusActive ? "Focus running" : modeText;
+    homeTodoSummary.textContent = getHomeTodoText(currentSettings);
+    homeTodaySummary.textContent = getHomeTodayText(currentSettings);
+
+    if (!loggedIn) {
+        action = "account";
+        homeKicker.textContent = "Account needed";
+        homeTitle.textContent = "Log in to sync your study setup";
+        homeDetail.textContent = "Use your StudyStreak account to load subjects, websites, todos, and timetable reminders.";
+        homePrimaryButton.textContent = "Go to Account";
+    } else if (safeSummary.focusActive) {
+        action = "stop";
+        homeKicker.textContent = "In focus";
+        homeTitle.textContent = safeSummary.pomodoroEnabled
+            ? `${safeSummary.pomodoroPhase === "break" ? "Break" : "Work"} ${formatClock(safeSummary.pomodoroSecondsLeft)}`
+            : `Focused ${formatSeconds(safeSummary.focusedSeconds)}`;
+        homeDetail.textContent =
+            `${preferredSubject || "Focus"} is running. Stop when you are done, then add a quick review note.`;
+        homePrimaryButton.textContent = "Stop Focus";
+    } else if (!hasSubjects) {
+        action = "refresh";
+        homeKicker.textContent = "Setup";
+        homeTitle.textContent = "Sync your subjects";
+        homeDetail.textContent = "Bring in subjects, topics, websites, timetable sessions, and todos from your StudyStreak account.";
+        homePrimaryButton.textContent = "Refresh Subjects";
+    } else if (!preferredSubject || !hasWebsites) {
+        action = "setup";
+        homeKicker.textContent = "Setup";
+        homeTitle.textContent = "Add focus websites";
+        homeDetail.textContent = "Choose a subject and save the websites you want available during focus.";
+        homePrimaryButton.textContent = "Set Up Focus";
+    } else {
+        action = "start";
+        homeKicker.textContent = "Ready";
+        homeTitle.textContent = `Start ${preferredSubject}`;
+        homeDetail.textContent = `${websites.length} allowed website${websites.length === 1 ? "" : "s"} ready. Todo overlay and timetable reminders will follow your current settings.`;
+        homePrimaryButton.textContent = "Start Focus";
+    }
+
+    homePrimaryButton.dataset.action = action;
+    homePrimaryButton.disabled = false;
+    homeFocusSetupButton.disabled = !loggedIn;
+    homeTodoButton.disabled = !loggedIn;
 }
 
 function renderTodoList(items = currentSettings.todoItems) {
@@ -338,7 +588,8 @@ async function saveTodoItems(items, message = "Todo list saved.") {
 
     currentSettings.todoItems = safeItems;
     renderTodoList(safeItems);
-    statusText.textContent = message;
+    await refreshLocalStateFromBackground();
+    statusText.textContent = result.message || message;
     return true;
 }
 
@@ -479,6 +730,7 @@ function renderFocusSummary(summary) {
         `Distracted ${formatSeconds(safeSummary.distractedSeconds)} | ` +
         `Idle ${formatSeconds(safeSummary.idleSeconds)}`;
     focusDomain.textContent = `Current: ${safeSummary.lastDomain} (${safeSummary.lastCategory})`;
+    renderHomePanel(safeSummary);
 }
 
 function renderAccount(settings) {
@@ -495,6 +747,7 @@ function renderAccount(settings) {
 
     logoutButton.disabled = !loggedIn;
     setAccountGate(settings);
+    renderSyncOverview(currentSettings);
 }
 
 function showPopupTab(tabName) {
@@ -516,7 +769,8 @@ function setAccountGate(settings) {
     const loggedIn = isLoggedIn(settings);
 
     tabButtons.forEach((button) => {
-        button.disabled = button.dataset.tab !== "account" && !loggedIn;
+        const publicTabs = ["home", "account"];
+        button.disabled = !publicTabs.includes(button.dataset.tab) && !loggedIn;
     });
 
     saveButton.disabled = !loggedIn || currentSettings.focusActive || !hasSyncedSubjects(settings);
@@ -536,9 +790,9 @@ function setAccountGate(settings) {
     clearCompletedTodosButton.disabled =
         !loggedIn || !cleanTodoItems(currentSettings.todoItems).some((item) => item.done);
 
-    const activePanel = document.querySelector(".tab-panel.active")?.dataset.panel || "account";
+    const activePanel = document.querySelector(".tab-panel.active")?.dataset.panel || "home";
 
-    if (!loggedIn && activePanel !== "account") {
+    if (!loggedIn && !["home", "account"].includes(activePanel)) {
         showPopupTab("account");
     }
 }
@@ -562,6 +816,51 @@ async function requireLogin() {
     }
 
     return true;
+}
+
+async function refreshLocalStateFromBackground() {
+    const state = await chrome.runtime.sendMessage({
+        type: "getCompanionState"
+    });
+
+    currentSettings = {
+        ...currentSettings,
+        ...(state?.settings || {})
+    };
+
+    renderTodaySessions(currentSettings);
+    renderSubjectOptions(
+        currentSettings.syncedSubjects,
+        currentSettings.selectedFocusSubject || currentSettings.focusSubject
+    );
+    renderFocusSummary(state?.summary || EMPTY_SUMMARY);
+    renderCompletedSummary(currentSettings.lastCompletedFocusSession);
+    renderFocusHistory(currentSettings.focusHistory);
+    renderTodoList(currentSettings.todoItems);
+    showPendingFocusReviewIfNeeded(currentSettings.lastCompletedFocusSession);
+    renderAccount(currentSettings);
+    return state;
+}
+
+async function retrySyncNow(showMessage = true) {
+    if (!(await requireLogin())) {
+        return;
+    }
+
+    retrySyncButton.disabled = true;
+    syncStatusLabel.textContent = "Retrying sync...";
+
+    const result = await chrome.runtime.sendMessage({
+        type: "retryOfflineUploads"
+    });
+
+    await refreshLocalStateFromBackground();
+
+    if (showMessage) {
+        statusText.textContent = result?.ok
+            ? (result.message || "Everything is synced.")
+            : (result?.message || "Some changes are still waiting to sync.");
+    }
 }
 
 async function loadSettings() {
@@ -595,6 +894,16 @@ async function loadSettings() {
         renderTodoList(state.settings.todoItems);
         showPendingFocusReviewIfNeeded(state.settings.lastCompletedFocusSession);
         renderAccount(currentSettings);
+
+        if (
+            isLoggedIn(currentSettings) &&
+            (
+                currentSettings.todoSyncPending ||
+                (currentSettings.offlineUploadQueue || []).length > 0
+            )
+        ) {
+            await retrySyncNow(false);
+        }
     } catch (error) {
         console.error(error);
         renderFocusSummary(EMPTY_SUMMARY);
@@ -625,26 +934,11 @@ async function loginToServer() {
 
     loginPassword.value = "";
     loginUsername.value = result.serverUsername;
-    const state = await chrome.runtime.sendMessage({
-        type: "getCompanionState"
-    });
-    currentSettings = {
-        ...currentSettings,
-        ...(state?.settings || {})
-    };
-
-    renderTodaySessions(currentSettings);
-    renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.selectedFocusSubject);
-    renderFocusSummary(state?.summary || EMPTY_SUMMARY);
-    renderCompletedSummary(currentSettings.lastCompletedFocusSession);
-    renderFocusHistory(currentSettings.focusHistory);
-    renderTodoList(currentSettings.todoItems);
-    showPendingFocusReviewIfNeeded(currentSettings.lastCompletedFocusSession);
-    renderAccount(currentSettings);
+    await refreshLocalStateFromBackground();
     statusText.textContent = currentSettings.syncedSubjects.length > 0
         ? "Logged in."
         : "Logged in. Sync subjects in the terminal app, then refresh.";
-    showPopupTab("focus");
+    showPopupTab("home");
 }
 
 async function logoutFromServer() {
@@ -654,6 +948,8 @@ async function logoutFromServer() {
         ...currentSettings,
         serverUsername: "",
         serverToken: "",
+        focusActive: false,
+        pomodoroEnabled: false,
         syncedSubjects: [],
         syncedSubjectWebsites: {},
         syncedSubjectTopics: {},
@@ -668,6 +964,7 @@ async function logoutFromServer() {
     allowedDomains.value = "";
     renderTodaySessions(currentSettings);
     renderSubjectOptions([], "");
+    renderFocusSummary(EMPTY_SUMMARY);
     renderCompletedSummary(null);
     renderFocusHistory([]);
     renderTodoList([]);
@@ -701,6 +998,7 @@ async function refreshSubjects() {
         selectedFocusSubject: result.selectedFocusSubject || ""
     };
 
+    await refreshLocalStateFromBackground();
     renderTodaySessions(currentSettings);
     renderSubjectOptions(
         currentSettings.syncedSubjects,
@@ -731,6 +1029,15 @@ async function saveSettings(showMessage = true) {
         }
     });
 
+    currentSettings = {
+        ...currentSettings,
+        remindersEnabled: remindersEnabled.checked,
+        strictFocusEnabled: strictFocusEnabled.checked,
+        pomodoroEnabled: pomodoroEnabledInput.checked,
+        todoOverlayEnabled: todoOverlayEnabled.checked
+    };
+    renderHomePanel();
+
     if (showMessage) {
         statusText.textContent = "Saved.";
     }
@@ -750,6 +1057,9 @@ async function saveReminderToggle() {
         }
     });
 
+    currentSettings.remindersEnabled = remindersEnabled.checked;
+    renderHomePanel();
+
     statusText.textContent = remindersEnabled.checked
         ? "Timetable notifications enabled."
         : "Timetable notifications disabled.";
@@ -767,6 +1077,7 @@ async function saveTodoOverlayToggle() {
     }
 
     currentSettings.todoOverlayEnabled = todoOverlayEnabled.checked;
+    renderHomePanel();
     statusText.textContent = todoOverlayEnabled.checked
         ? "Todo overlay enabled."
         : "Todo overlay hidden.";
@@ -816,6 +1127,7 @@ async function saveFocusWebsites(showMessage = true) {
     };
 
     renderSubjectOptions(currentSettings.syncedSubjects, currentSettings.selectedFocusSubject);
+    renderHomePanel();
 
     if (showMessage) {
         const count = Array.isArray(result.websites) ? result.websites.length : 0;
@@ -895,6 +1207,13 @@ async function stopFocus() {
 
     if (!summary.completedAt && summary.serverUpload?.error) {
         statusText.textContent = summary.serverUpload.error;
+        return;
+    }
+
+    if (summary.offlineQueued) {
+        statusText.textContent = "Focus stopped. Saved offline and will upload automatically when sync works.";
+        showFocusReviewPanel(summary);
+        await refreshLocalStateFromBackground();
         return;
     }
 
@@ -1134,6 +1453,45 @@ async function clearCompletedTodos() {
     await saveTodoItems(nextItems, "Completed tasks cleared.");
 }
 
+async function handleHomePrimaryAction() {
+    const action = homePrimaryButton.dataset.action || "start";
+
+    if (action === "account") {
+        showPopupTab("account");
+        loginUsername.focus();
+        return;
+    }
+
+    if (action === "refresh") {
+        await refreshSubjects();
+        return;
+    }
+
+    if (action === "setup") {
+        showPopupTab("focus");
+        focusSubject.focus();
+        return;
+    }
+
+    if (action === "stop") {
+        await stopFocus();
+        return;
+    }
+
+    const subject = getPreferredSubject(currentSettings);
+
+    if (!subject) {
+        showPopupTab("focus");
+        statusText.textContent = "Choose a subject first.";
+        return;
+    }
+
+    focusSubject.value = subject;
+    renderFocusWebsitesForSubject(subject);
+    await rememberSelectedSubject(subject);
+    await startFocus();
+}
+
 tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
         showPopupTab(button.dataset.tab);
@@ -1145,6 +1503,7 @@ todoOverlayEnabled.addEventListener("change", saveTodoOverlayToggle);
 focusSubject.addEventListener("change", async () => {
     renderFocusWebsitesForSubject(focusSubject.value);
     await rememberSelectedSubject(focusSubject.value);
+    renderHomePanel();
 });
 strictFocusEnabled.addEventListener("change", saveSettings);
 pomodoroEnabledInput.addEventListener("change", saveSettings);
@@ -1160,6 +1519,9 @@ copyJsonButton.addEventListener("click", copySummaryJson);
 clearHistoryButton.addEventListener("click", clearFocusHistory);
 addTodoButton.addEventListener("click", addTodoItem);
 clearCompletedTodosButton.addEventListener("click", clearCompletedTodos);
+homePrimaryButton.addEventListener("click", handleHomePrimaryAction);
+homeFocusSetupButton.addEventListener("click", () => showPopupTab("focus"));
+homeTodoButton.addEventListener("click", () => showPopupTab("todo"));
 newTodoInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
         event.preventDefault();
@@ -1186,6 +1548,7 @@ todoList.addEventListener("click", (event) => {
 });
 loginButton.addEventListener("click", loginToServer);
 logoutButton.addEventListener("click", logoutFromServer);
+retrySyncButton.addEventListener("click", () => retrySyncNow(true));
 
 setInterval(refreshFocusStatus, 2000);
 

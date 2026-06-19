@@ -5,6 +5,8 @@
     "description": "Daily study reminders and focus quality tracking for StudyStreak",
     "permissions": ["alarms", "notifications", "storage", "tabs", "idle", "scripting"],
     "host_permissions": [
+        "http://*/*",
+        "https://*/*",
         "https://chichi.hackclub.app/*",
         "http://127.0.0.1:8000/*"
     ],
@@ -15,7 +17,7 @@
         {
             "matches": ["http://*/*", "https://*/*"],
             "js": ["focus_overlay.js"],
-            "run_at": "document_idle"
+            "run_at": "document_start"
         }
     ],
     "icons": {

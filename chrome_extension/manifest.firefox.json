@@ -1,15 +1,23 @@
 {
-    "manifest_version": 3,
+    "manifest_version": 2,
     "name": "StudyStreak Companion",
     "version": "0.2.0",
     "description": "Daily study reminders and focus quality tracking for StudyStreak",
-    "permissions": ["alarms", "notifications", "storage", "tabs", "idle", "scripting"],
-    "host_permissions": [
+    "permissions": [
+        "alarms",
+        "notifications",
+        "storage",
+        "tabs",
+        "idle",
+        "webNavigation",
+        "http://*/*",
+        "https://*/*",
         "https://chichi.hackclub.app/*",
         "http://127.0.0.1:8000/*"
     ],
     "background": {
-        "scripts": ["background.js"]
+        "scripts": ["background.js"],
+        "persistent": true
     },
     "browser_specific_settings": {
         "gecko": {
@@ -31,13 +39,13 @@
         {
             "matches": ["http://*/*", "https://*/*"],
             "js": ["focus_overlay.js"],
-            "run_at": "document_idle"
+            "run_at": "document_start"
         }
     ],
     "icons": {
         "128": "icon128.png"
     },
-    "action": {
+    "browser_action": {
         "default_popup": "popup.html",
         "default_title": "StudyStreak"
     }

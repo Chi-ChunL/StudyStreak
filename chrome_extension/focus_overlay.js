@@ -1,7 +1,8 @@
 (function () {
-    const SCRIPT_VERSION = "todo-overlay-v3";
+    const SCRIPT_VERSION = "todo-overlay-v7";
 
     if (window.__studyStreakFocusOverlayVersion === SCRIPT_VERSION) {
+        window.__studyStreakRefreshOverlay?.();
         return;
     }
 
@@ -22,7 +23,7 @@
         "syncedSubjectTopics",
         "focusOverlayPosition"
     ];
-    const TODO_STORAGE_KEYS = ["todoOverlayEnabled", "todoItems", "todoOverlayPosition"];
+    const TODO_STORAGE_KEYS = ["serverToken", "todoOverlayEnabled", "todoItems", "todoOverlayPosition"];
     const STORAGE_KEYS = [...FOCUS_STORAGE_KEYS, ...TODO_STORAGE_KEYS];
 
     let timerId = null;
@@ -32,6 +33,10 @@
         text: "",
         type: "pending"
     };
+    let overlayMinimized = false;
+    let overlayWatchdogId = null;
+    let overlayObserver = null;
+    let startupRefreshTimerIds = [];
     let currentState = {
         focusActive: false,
         focusStartedAt: null,
@@ -43,6 +48,7 @@
         pomodoroWorkBlocksCompleted: 0,
         syncedSubjectTopics: {},
         focusOverlayPosition: null,
+        serverToken: "",
         todoOverlayEnabled: true,
         todoItems: [],
         todoOverlayPosition: null
@@ -59,6 +65,22 @@
         return new Promise((resolve) => {
             chrome.storage.local.set(values, resolve);
         });
+    }
+
+    function getMountRoot() {
+        return document.documentElement || document.body;
+    }
+
+    function appendOverlayRoot(root) {
+        const mountRoot = getMountRoot();
+
+        if (!mountRoot) {
+            scheduleRefresh(50);
+            return false;
+        }
+
+        mountRoot.append(root);
+        return true;
     }
 
     function formatElapsed(milliseconds) {
@@ -271,6 +293,41 @@
                 user-select: none;
             }
 
+            .timer.minimized {
+                width: 142px;
+                padding: 7px 9px;
+            }
+
+            .timer.minimized .subject,
+            .timer.minimized .status,
+            .timer.minimized .stop-button,
+            .timer.minimized .review-panel {
+                display: none;
+            }
+
+            .topline {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 6px;
+                align-items: center;
+            }
+
+            .minimize-button {
+                width: 24px;
+                height: 22px;
+                margin: 0;
+                padding: 0;
+                border: 1px solid #9b8061;
+                border-radius: 5px;
+                background: #fff8e8;
+                color: #15384f;
+                cursor: pointer;
+                font: inherit;
+                font-size: 12px;
+                font-weight: 900;
+                pointer-events: auto;
+            }
+
             .label {
                 color: #0f4c7a;
                 font-size: 11px;
@@ -441,7 +498,10 @@
         const timer = document.createElement("div");
         timer.className = "timer";
         timer.innerHTML = `
-            <div class="label">StudyStreak</div>
+            <div class="topline">
+                <div class="label">StudyStreak</div>
+                <button class="minimize-button" type="button" title="Minimize overlay">-</button>
+            </div>
             <div class="time">0:00</div>
             <div class="subject">Focus running</div>
             <div class="status" aria-live="polite"></div>
@@ -466,9 +526,13 @@
         shadow.append(style, timer);
         makeOverlayDraggable(root, timer, "focusOverlayPosition");
         shadow.querySelector(".stop-button").addEventListener("click", stopFocusFromOverlay);
+        shadow.querySelector(".minimize-button").addEventListener("click", toggleOverlayMinimized);
         shadow.querySelector(".save-review").addEventListener("click", saveReviewFromOverlay);
         shadow.querySelector(".skip-review").addEventListener("click", skipReviewFromOverlay);
-        document.documentElement.append(root);
+        if (!appendOverlayRoot(root)) {
+            return null;
+        }
+
         return root;
     }
 
@@ -521,7 +585,7 @@
             }
 
             .todo-list {
-                max-height: calc(44vh - 40px);
+                max-height: calc(44vh - 84px);
                 overflow-y: auto;
                 padding: 8px 10px;
             }
@@ -567,6 +631,31 @@
             .todo-text {
                 overflow-wrap: anywhere;
             }
+
+            .todo-footer {
+                padding: 8px 10px 10px;
+                border-top: 1px solid #d4bd95;
+            }
+
+            .complete-all-button {
+                width: 100%;
+                margin: 0;
+                padding: 7px 8px;
+                border: 2px solid #0f6b35;
+                border-radius: 6px;
+                background: #dfead6;
+                color: #173f20;
+                cursor: pointer;
+                font: inherit;
+                font-size: 12px;
+                font-weight: 900;
+                pointer-events: auto;
+            }
+
+            .complete-all-button:disabled {
+                cursor: not-allowed;
+                opacity: 0.55;
+            }
         `;
 
         const card = document.createElement("div");
@@ -574,20 +663,31 @@
         const title = document.createElement("span");
         const count = document.createElement("span");
         const list = document.createElement("div");
+        const footer = document.createElement("div");
+        const completeAllButton = document.createElement("button");
 
         card.className = "todo-card";
         header.className = "todo-header";
         count.className = "todo-count";
         list.className = "todo-list";
+        footer.className = "todo-footer";
+        completeAllButton.className = "complete-all-button";
+        completeAllButton.type = "button";
+        completeAllButton.textContent = "Complete All";
         title.textContent = "Todo";
 
         header.append(title, count);
-        card.append(header, list);
+        footer.append(completeAllButton);
+        card.append(header, list, footer);
         shadow.append(style, card);
 
         makeOverlayDraggable(root, header, "todoOverlayPosition");
         list.addEventListener("change", onTodoOverlayChange);
-        document.documentElement.append(root);
+        completeAllButton.addEventListener("click", completeAllTodosFromOverlay);
+        if (!appendOverlayRoot(root)) {
+            return null;
+        }
+
         return root;
     }
 
@@ -629,16 +729,47 @@
         }
     }
 
+    async function completeAllTodosFromOverlay(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const items = cleanTodoItems(currentState.todoItems);
+
+        if (items.length === 0) {
+            return;
+        }
+
+        const root = document.getElementById(TODO_OVERLAY_ID);
+        const button = root?.shadowRoot?.querySelector(".complete-all-button");
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = "Completing...";
+        }
+
+        currentState.todoItems = [];
+        renderTodoOverlay();
+
+        try {
+            await chrome.runtime.sendMessage({
+                type: "completeAllTodoItems"
+            });
+        } catch {
+            await storageSet({ todoItems: [] });
+        }
+    }
+
     function renderTodoOverlay() {
-        if (currentState.todoOverlayEnabled === false) {
+        if (!currentState.serverToken || currentState.todoOverlayEnabled === false) {
             removeTodoOverlay();
             return;
         }
 
         const root = getTodoOverlayRoot();
-        const shadow = root.shadowRoot;
+        const shadow = root?.shadowRoot;
 
         if (!shadow) {
+            scheduleRefresh(100);
             return;
         }
 
@@ -651,9 +782,16 @@
         const items = cleanTodoItems(currentState.todoItems);
         const list = shadow.querySelector(".todo-list");
         const count = shadow.querySelector(".todo-count");
+        const completeAllButton = shadow.querySelector(".complete-all-button");
         const remaining = items.filter((item) => !item.done).length;
 
         count.textContent = items.length > 0 ? `${remaining}/${items.length}` : "0";
+        if (completeAllButton) {
+            completeAllButton.disabled = items.length === 0;
+            completeAllButton.textContent = items.length === 0
+                ? "No Tasks"
+                : "Complete All";
+        }
         list.replaceChildren();
 
         if (items.length === 0) {
@@ -695,6 +833,25 @@
         status.className = text ? `status ${type}` : "status";
     }
 
+    function toggleOverlayMinimized(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        overlayMinimized = !overlayMinimized;
+
+        const root = document.getElementById(OVERLAY_ID);
+        const timer = root?.shadowRoot?.querySelector(".timer");
+        const button = root?.shadowRoot?.querySelector(".minimize-button");
+
+        if (timer) {
+            timer.classList.toggle("minimized", overlayMinimized);
+        }
+
+        if (button) {
+            button.textContent = overlayMinimized ? "+" : "-";
+            button.title = overlayMinimized ? "Show overlay" : "Minimize overlay";
+        }
+    }
+
     function getStopResultMessage(summary) {
         if (!summary) {
             return {
@@ -720,6 +877,14 @@
             };
         }
 
+        if (summary.offlineQueued) {
+            return {
+                text: "Saved offline. Will upload automatically when sync works.",
+                type: "pending",
+                buttonText: "Saved offline"
+            };
+        }
+
         if (summary.serverUpload?.ok) {
             return {
                 text: `Leaderboard uploaded ${summary.serverUpload.minutes} min. Quality sync failed.`,
@@ -737,9 +902,10 @@
 
     function renderStoppedOverlay() {
         const root = getOverlayRoot();
-        const shadowTimer = root.shadowRoot;
+        const shadowTimer = root?.shadowRoot;
 
         if (!shadowTimer) {
+            scheduleRefresh(100);
             return;
         }
 
@@ -771,11 +937,26 @@
         }
     }
 
+    function getDefaultReviewNote(summary) {
+        const completedTodos = cleanTodoItems(summary?.completedTodos || summary?.todoSnapshot || [])
+            .filter((item) => item.done);
+
+        if (completedTodos.length === 0) {
+            return "";
+        }
+
+        return [
+            "Completed:",
+            ...completedTodos.map((item) => `- ${item.text}`)
+        ].join("\n");
+    }
+
     function showReviewPanel(summary) {
         const root = getOverlayRoot();
-        const shadow = root.shadowRoot;
+        const shadow = root?.shadowRoot;
 
         if (!shadow || !summary?.completedAt) {
+            scheduleRefresh(100);
             return;
         }
 
@@ -801,7 +982,7 @@
         });
 
         topicSelect.value = topics.includes(summary.topic) ? summary.topic : "";
-        noteInput.value = summary.reviewNote || "";
+        noteInput.value = summary.reviewNote || getDefaultReviewNote(summary);
         panel.classList.add("visible");
         noteInput.focus();
     }
@@ -816,7 +997,13 @@
         }
 
         const root = getOverlayRoot();
-        const shadow = root.shadowRoot;
+        const shadow = root?.shadowRoot;
+
+        if (!shadow) {
+            setOverlayStatus("Overlay is still loading. Try again.", "pending");
+            return;
+        }
+
         const saveButton = shadow.querySelector(".save-review");
         const skipButton = shadow.querySelector(".skip-review");
         const topic = shadow.querySelector(".review-topic").value;
@@ -939,10 +1126,18 @@
         }
 
         const root = getOverlayRoot();
-        const shadowTimer = root.shadowRoot;
+        const shadowTimer = root?.shadowRoot;
 
         if (!shadowTimer) {
+            scheduleRefresh(100);
             return;
+        }
+
+        const timerCard = shadowTimer.querySelector(".timer");
+        const minimizeButton = shadowTimer.querySelector(".minimize-button");
+        timerCard?.classList.toggle("minimized", overlayMinimized);
+        if (minimizeButton) {
+            minimizeButton.textContent = overlayMinimized ? "+" : "-";
         }
 
         const startedAt = Number(currentState.focusStartedAt) || Date.now();
@@ -977,6 +1172,64 @@
         }
     }
 
+    function repairMissingOverlays() {
+        if (currentState.focusActive && !document.getElementById(OVERLAY_ID)) {
+            renderOverlay();
+        }
+
+        if (
+            currentState.serverToken &&
+            currentState.todoOverlayEnabled !== false &&
+            !document.getElementById(TODO_OVERLAY_ID)
+        ) {
+            renderTodoOverlay();
+        }
+    }
+
+    function startOverlayWatchdog() {
+        if (overlayWatchdogId === null) {
+            overlayWatchdogId = setInterval(repairMissingOverlays, 1500);
+        }
+
+        if (!overlayObserver && document.documentElement) {
+            overlayObserver = new MutationObserver(repairMissingOverlays);
+            overlayObserver.observe(document.documentElement, {
+                childList: true
+            });
+            return;
+        }
+
+        if (!overlayObserver) {
+            setTimeout(startOverlayWatchdog, 100);
+        }
+    }
+
+    function scheduleRefresh(delayMs = 0) {
+        const timerId = setTimeout(() => {
+            startupRefreshTimerIds = startupRefreshTimerIds.filter((id) => id !== timerId);
+            refreshState().catch(() => {});
+        }, delayMs);
+
+        startupRefreshTimerIds.push(timerId);
+    }
+
+    function scheduleStartupRefreshes() {
+        [0, 100, 400, 1000, 2000, 4000].forEach(scheduleRefresh);
+    }
+
+    function bindPageLifecycleRefreshes() {
+        window.addEventListener("pageshow", () => scheduleRefresh(0));
+        window.addEventListener("focus", () => scheduleRefresh(0));
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                scheduleRefresh(0);
+            }
+        });
+        document.addEventListener("DOMContentLoaded", () => scheduleRefresh(0));
+        window.addEventListener("load", () => scheduleRefresh(0));
+        document.addEventListener("readystatechange", () => scheduleRefresh(0));
+    }
+
     async function refreshState() {
         currentState = {
             ...currentState,
@@ -985,7 +1238,12 @@
 
         renderOverlay();
         renderTodoOverlay();
+        repairMissingOverlays();
     }
+
+    window.__studyStreakRefreshOverlay = refreshState;
+    bindPageLifecycleRefreshes();
+    startOverlayWatchdog();
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local") {
@@ -1018,5 +1276,22 @@
         }
     });
 
-    refreshState();
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message?.type !== "refreshStudyStreakOverlay") {
+            return false;
+        }
+
+        refreshState()
+            .then(() => sendResponse({ ok: true }))
+            .catch((error) => {
+                sendResponse({
+                    ok: false,
+                    error: String(error?.message || error || "Overlay refresh failed.")
+                });
+            });
+
+        return true;
+    });
+
+    scheduleStartupRefreshes();
 })();

@@ -13,6 +13,8 @@ SHARED_FILES = [
     "popup.css",
     "popup.html",
     "popup.js",
+    "strict_focus_blocked.html",
+    "strict_focus_blocked.js",
 ]
 
 

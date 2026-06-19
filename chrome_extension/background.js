@@ -17,6 +17,12 @@ const DEFAULT_STATS = {
     distractedDomains: {}
 };
 
+const DEFAULT_SYNC_STATUS = {
+    state: "idle",
+    message: "Not synced yet.",
+    at: null
+};
+
 function cleanTodoItems(items) {
     if (!Array.isArray(items)) {
         return [];
@@ -38,6 +44,78 @@ function cleanTodoItems(items) {
         })
         .filter(Boolean)
         .slice(0, 50);
+}
+
+function cleanUploadSummary(summary) {
+    if (!summary || typeof summary !== "object") {
+        return null;
+    }
+
+    const completedAt = String(summary.completedAt || "").trim();
+    const subject = String(summary.subject || "").trim().toLowerCase();
+
+    if (!completedAt || !subject || subject === "unknown") {
+        return null;
+    }
+
+    const todoSnapshot = cleanTodoItems(summary.todoSnapshot || []);
+
+    return {
+        ...summary,
+        completedAt,
+        subject,
+        score: Math.max(0, Math.min(100, Number(summary.score) || 0)),
+        focusedSeconds: Math.max(0, Number(summary.focusedSeconds) || 0),
+        distractedSeconds: Math.max(0, Number(summary.distractedSeconds) || 0),
+        idleSeconds: Math.max(0, Number(summary.idleSeconds) || 0),
+        topDistractedDomain: String(summary.topDistractedDomain || "none"),
+        topic: String(summary.topic || "").trim() || undefined,
+        reviewNote: String(summary.reviewNote || "").trim() || undefined,
+        todoSnapshot,
+        completedTodos: todoSnapshot.filter((item) => item.done)
+    };
+}
+
+function cleanOfflineUploadQueue(queue) {
+    if (!Array.isArray(queue)) {
+        return [];
+    }
+
+    const byCompletedAt = new Map();
+
+    queue.forEach((summary) => {
+        const cleanSummary = cleanUploadSummary(summary);
+
+        if (cleanSummary) {
+            byCompletedAt.set(cleanSummary.completedAt, cleanSummary);
+        }
+    });
+
+    return [...byCompletedAt.values()].slice(-20);
+}
+
+function cleanSyncStatus(status) {
+    if (!status || typeof status !== "object") {
+        return DEFAULT_SYNC_STATUS;
+    }
+
+    return {
+        state: ["idle", "synced", "pending", "failed"].includes(status.state)
+            ? status.state
+            : "idle",
+        message: String(status.message || DEFAULT_SYNC_STATUS.message).slice(0, 180),
+        at: status.at ? String(status.at) : null
+    };
+}
+
+function friendlyNetworkError(error, fallback = "Network error.") {
+    const message = String(error?.message || "");
+
+    if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
+        return `${fallback} Check your internet, server deployment, and extension CORS permissions.`;
+    }
+
+    return message || fallback;
 }
 
 const DEFAULT_SETTINGS = {
@@ -65,6 +143,10 @@ const DEFAULT_SETTINGS = {
     pomodoroWorkBlocksCompleted: 0,
     todoOverlayEnabled: true,
     todoItems: [],
+    completedTodoItems: [],
+    todoSyncPending: false,
+    offlineUploadQueue: [],
+    lastSyncStatus: DEFAULT_SYNC_STATUS,
     focusOverlayPosition: null,
     todoOverlayPosition: null,
 };
@@ -119,6 +201,10 @@ async function getSettings() {
         pomodoroWorkBlocksCompleted: Number(saved.pomodoroWorkBlocksCompleted) || 0,
         todoOverlayEnabled: saved.todoOverlayEnabled !== false,
         todoItems: cleanTodoItems(saved.todoItems),
+        completedTodoItems: cleanTodoItems(saved.completedTodoItems),
+        todoSyncPending: Boolean(saved.todoSyncPending),
+        offlineUploadQueue: cleanOfflineUploadQueue(saved.offlineUploadQueue),
+        lastSyncStatus: cleanSyncStatus(saved.lastSyncStatus),
         focusOverlayPosition: (
             saved.focusOverlayPosition &&
             Number.isFinite(Number(saved.focusOverlayPosition.left)) &&
@@ -405,6 +491,7 @@ async function refreshSubjectsFromServer() {
     });
     await scheduleTimetableReminders(timetable);
     await injectFocusOverlayIntoOpenTabs();
+    const syncResult = await retryOfflineUploads();
 
     return {
         ok: true,
@@ -413,7 +500,8 @@ async function refreshSubjectsFromServer() {
         subjectTopics,
         timetable,
         todoItems,
-        selectedFocusSubject
+        selectedFocusSubject,
+        syncResult
     };
 }
 
@@ -458,6 +546,7 @@ async function saveSubjectWebsitesForSubject(subject, websites) {
         syncedSubjectWebsites: subjectWebsites,
         selectedFocusSubject: cleanSubject
     });
+    await setSyncStatus("synced", `Saved ${cleanedWebsites.length} focus website(s) for ${cleanSubject}.`);
 
     return {
         ok: true,
@@ -561,37 +650,273 @@ async function uploadFocusQualitySession(summary, token) {
     return { ok: true };
 }
 
+async function setSyncStatus(state, message) {
+    const lastSyncStatus = {
+        state,
+        message,
+        at: new Date().toISOString()
+    };
+
+    await chrome.storage.local.set({ lastSyncStatus });
+    return lastSyncStatus;
+}
+
+async function storeQueuedSummary(summary) {
+    const settings = await getSettings();
+    const cleanSummary = cleanUploadSummary({
+        ...summary,
+        offlineQueued: true
+    });
+
+    if (!cleanSummary) {
+        return settings.offlineUploadQueue;
+    }
+
+    const queue = cleanOfflineUploadQueue([
+        ...settings.offlineUploadQueue.filter((item) => item.completedAt !== cleanSummary.completedAt),
+        cleanSummary
+    ]);
+
+    await chrome.storage.local.set({
+        offlineUploadQueue: queue
+    });
+    await setSyncStatus("pending", `${queue.length} focus session(s) waiting to upload.`);
+
+    return queue;
+}
+
+function mergeUploadedSummaryIntoHistory(settings, completedAt, serverUpload, qualityUpload) {
+    const updateSession = (session) => {
+        if (session?.completedAt !== completedAt) {
+            return session;
+        }
+
+        return {
+            ...session,
+            offlineQueued: false,
+            serverUpload,
+            qualityUpload
+        };
+    };
+
+    return {
+        lastCompletedFocusSession: updateSession(settings.lastCompletedFocusSession),
+        focusHistory: (settings.focusHistory || []).map(updateSession)
+    };
+}
+
+async function retryOfflineUploads() {
+    const settings = await getSettings();
+    let queue = cleanOfflineUploadQueue(settings.offlineUploadQueue);
+    let todoSynced = !settings.todoSyncPending;
+
+    if (!settings.serverToken) {
+        if (queue.length > 0 || settings.todoSyncPending) {
+            await setSyncStatus("pending", "Log in to upload saved extension changes.");
+        }
+
+        return {
+            ok: false,
+            queue,
+            todoSynced,
+            message: "Log in first."
+        };
+    }
+
+    if (settings.todoSyncPending) {
+        try {
+            await uploadTodoItemsToServer(settings.serverToken, settings.todoItems);
+            todoSynced = true;
+            await chrome.storage.local.set({ todoSyncPending: false });
+        } catch (error) {
+            await setSyncStatus("pending", friendlyNetworkError(error, "Todo sync saved for retry."));
+            return {
+                ok: false,
+                queue,
+                todoSynced: false,
+                message: friendlyNetworkError(error, "Todo sync saved for retry.")
+            };
+        }
+    }
+
+    if (queue.length === 0) {
+        await setSyncStatus("synced", todoSynced ? "Everything is synced." : "Focus sessions synced.");
+        return {
+            ok: true,
+            queue: [],
+            todoSynced,
+            message: "Everything is synced."
+        };
+    }
+
+    const remaining = [];
+    let uploadedCount = 0;
+
+    for (const summary of queue) {
+        try {
+            const serverUpload = await uploadCompletedFocusSession(summary, settings.serverToken);
+            const qualityUpload = await uploadFocusQualitySession(summary, settings.serverToken);
+            const latestSettings = await getSettings();
+            const merged = mergeUploadedSummaryIntoHistory(
+                latestSettings,
+                summary.completedAt,
+                serverUpload,
+                qualityUpload
+            );
+
+            await chrome.storage.local.set(merged);
+            uploadedCount += 1;
+        } catch (error) {
+            remaining.push({
+                ...summary,
+                serverUpload: summary.serverUpload?.ok
+                    ? summary.serverUpload
+                    : { ok: false, error: friendlyNetworkError(error, "Upload queued for retry.") },
+                qualityUpload: summary.qualityUpload?.ok
+                    ? summary.qualityUpload
+                    : { ok: false, error: friendlyNetworkError(error, "Quality sync queued for retry.") }
+            });
+        }
+    }
+
+    await chrome.storage.local.set({
+        offlineUploadQueue: remaining
+    });
+
+    if (remaining.length > 0) {
+        await setSyncStatus(
+            "pending",
+            `${uploadedCount} uploaded. ${remaining.length} still waiting for retry.`
+        );
+        return {
+            ok: false,
+            queue: remaining,
+            todoSynced,
+            message: `${remaining.length} session(s) still queued.`
+        };
+    }
+
+    await setSyncStatus("synced", `Uploaded ${uploadedCount} queued session(s).`);
+    return {
+        ok: true,
+        queue: [],
+        todoSynced,
+        message: `Uploaded ${uploadedCount} queued session(s).`
+    };
+}
+
+async function saveTodoItemsWithSync(todoItems, settings) {
+    let todoSyncPending = !settings.serverToken;
+    let syncMessage = todoSyncPending
+        ? "Todo list saved locally. Log in to sync."
+        : "Todo list saved.";
+
+    await chrome.storage.local.set({
+        todoItems,
+        todoSyncPending
+    });
+
+    if (settings.serverToken) {
+        try {
+            await uploadTodoItemsToServer(settings.serverToken, todoItems);
+            todoSyncPending = false;
+            syncMessage = "Todo list synced.";
+            await chrome.storage.local.set({ todoSyncPending: false });
+            await setSyncStatus("synced", syncMessage);
+        } catch (error) {
+            todoSyncPending = true;
+            syncMessage = friendlyNetworkError(error, "Todo list saved locally for retry.");
+            await chrome.storage.local.set({ todoSyncPending: true });
+            await setSyncStatus("pending", syncMessage);
+        }
+    }
+
+    await injectFocusOverlayIntoOpenTabs();
+
+    return {
+        ok: true,
+        pending: todoSyncPending,
+        message: syncMessage
+    };
+}
+
+async function completeAllTodoItems() {
+    const settings = await getSettings();
+    const activeItems = cleanTodoItems(settings.todoItems);
+    const completedItems = activeItems.map((item) => ({
+        ...item,
+        done: true
+    }));
+
+    if (completedItems.length === 0) {
+        return {
+            ok: true,
+            completedCount: 0,
+            message: "No todo tasks to complete."
+        };
+    }
+
+    if (settings.focusActive) {
+        await chrome.storage.local.set({
+            completedTodoItems: cleanTodoItems([
+                ...settings.completedTodoItems,
+                ...completedItems
+            ])
+        });
+    }
+
+    const result = await saveTodoItemsWithSync([], settings);
+
+    return {
+        ...result,
+        completedCount: completedItems.length,
+        message: result.pending
+            ? `${completedItems.length} task(s) completed locally. Todo sync will retry.`
+            : `${completedItems.length} task(s) completed and cleared.`
+    };
+}
+
 async function uploadAndStoreCompletedSummary(completedSummary, settings) {
     let serverUpload = { ok: false, error: "Not uploaded."};
     let qualityUpload = { ok: false, error: "Not synced"};
+    const todoSnapshot = cleanTodoItems([
+        ...settings.completedTodoItems,
+        ...settings.todoItems
+    ]);
+    const completedSummaryWithTodos = {
+        ...completedSummary,
+        todoSnapshot,
+        completedTodos: todoSnapshot.filter((item) => item.done)
+    };
 
     try {
         serverUpload = await uploadCompletedFocusSession(
-            completedSummary,
+            completedSummaryWithTodos,
             settings.serverToken
         );
     } catch (error) {
         serverUpload = {
             ok: false,
-            error: error.message || "Upload failed."
+            error: friendlyNetworkError(error, "Upload saved for retry.")
         };
     }
 
     try {
         qualityUpload = await uploadFocusQualitySession(
-            completedSummary,
+            completedSummaryWithTodos,
             settings.serverToken
         );
     } catch(error) {
         qualityUpload = {
             ok: false,
-            error: error.message || "Quality sync failed."
+            error: friendlyNetworkError(error, "Quality sync saved for retry.")
         };
     }
 
     const completedSummaryWithUpload = {
-        ...completedSummary,
+        ...completedSummaryWithTodos,
         reviewPending: true,
+        offlineQueued: !serverUpload.ok || !qualityUpload.ok,
         serverUpload,
         qualityUpload
     };
@@ -603,8 +928,18 @@ async function uploadAndStoreCompletedSummary(completedSummary, settings) {
 
     await chrome.storage.local.set({
         lastCompletedFocusSession: completedSummaryWithUpload,
-        focusHistory
+        focusHistory,
+        completedTodoItems: []
     });
+
+    if (completedSummaryWithUpload.offlineQueued) {
+        await storeQueuedSummary(completedSummaryWithUpload);
+    } else {
+        await setSyncStatus(
+            "synced",
+            `Uploaded ${serverUpload.minutes} min and synced focus quality.`
+        );
+    }
 
     return completedSummaryWithUpload;
 }
@@ -633,6 +968,7 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
     let updatedSummary = {
         ...matchedSummary,
         reviewPending: false,
+        offlineQueued: false,
         topic: cleanTopic || undefined,
         reviewNote: cleanReviewNote || undefined
     };
@@ -645,9 +981,10 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
     } catch (error) {
         updatedSummary = {
             ...updatedSummary,
+            offlineQueued: true,
             serverUpload: {
                 ok: false,
-                error: error.message || "Review sync failed."
+                error: friendlyNetworkError(error, "Review saved locally for retry.")
             }
         };
     }
@@ -672,6 +1009,12 @@ async function saveFocusReview(completedAt, topic, reviewNote) {
         ),
         focusHistory: nextHistory.slice(0, 3)
     });
+
+    if (updatedSummary.offlineQueued) {
+        await storeQueuedSummary(updatedSummary);
+    } else {
+        await setSyncStatus("synced", "Review synced.");
+    }
 
     if (!updatedSummary.serverUpload?.ok) {
         return {
@@ -830,12 +1173,25 @@ async function loginToServer(username, password) {
         pomodoroWorkBlocksCompleted: sameAccount
             ? previousSettings.pomodoroWorkBlocksCompleted
             : 0,
+        completedTodoItems: sameAccount ? previousSettings.completedTodoItems : [],
+        offlineUploadQueue: sameAccount ? previousSettings.offlineUploadQueue : [],
+        todoSyncPending: sameAccount ? previousSettings.todoSyncPending : false,
+        lastSyncStatus: sameAccount
+            ? previousSettings.lastSyncStatus
+            : {
+                state: "synced",
+                message: "Logged in. Ready to sync.",
+                at: new Date().toISOString()
+            },
         todoOverlayEnabled: previousSettings.todoOverlayEnabled,
         focusOverlayPosition: previousSettings.focusOverlayPosition,
         todoOverlayPosition: previousSettings.todoOverlayPosition
     });
     await scheduleTimetableReminders(timetable);
     await injectFocusOverlayIntoOpenTabs();
+    const syncResult = sameAccount
+        ? await retryOfflineUploads()
+        : { ok: true, queue: [], todoSynced: true, message: "Logged in." };
 
     return {
         ok: true,
@@ -845,7 +1201,8 @@ async function loginToServer(username, password) {
         subjectTopics,
         timetable,
         todoItems: storedTodoItems,
-        selectedFocusSubject
+        selectedFocusSubject,
+        syncResult
     };
 }
 
@@ -870,6 +1227,14 @@ async function logoutFromServer() {
         pomodoroPhaseDurationSeconds: POMODORO_WORK_SECONDS,
         pomodoroWorkBlocksCompleted: 0,
         todoItems: [],
+        completedTodoItems: [],
+        todoSyncPending: false,
+        offlineUploadQueue: [],
+        lastSyncStatus: {
+            state: "idle",
+            message: "Logged out.",
+            at: new Date().toISOString()
+        },
         syncedSubjects: [],
         syncedSubjectWebsites: {},
         syncedSubjectTopics: {},
@@ -924,25 +1289,144 @@ function canInjectOverlayIntoUrl(url) {
     );
 }
 
-async function injectFocusOverlayIntoOpenTabs() {
-    if (!chrome.scripting?.executeScript) {
+function executeLegacyOverlayScript(tabId) {
+    return new Promise((resolve, reject) => {
+        if (!chrome.tabs?.executeScript) {
+            resolve(false);
+            return;
+        }
+
+        let settled = false;
+        const finish = (ok, error = null) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            if (ok) {
+                resolve(true);
+            } else {
+                reject(error || new Error("Legacy overlay injection failed."));
+            }
+        };
+        const timeoutId = setTimeout(() => finish(true), 1500);
+
+        try {
+            const result = chrome.tabs.executeScript(
+                tabId,
+                {
+                    file: "/focus_overlay.js",
+                    runAt: "document_idle"
+                },
+                () => {
+                    clearTimeout(timeoutId);
+                    const error = chrome.runtime.lastError;
+                    finish(!error, error ? new Error(error.message) : null);
+                }
+            );
+
+            if (result?.then) {
+                result.then(
+                    () => {
+                        clearTimeout(timeoutId);
+                        finish(true);
+                    },
+                    (error) => {
+                        clearTimeout(timeoutId);
+                        finish(false, error);
+                    }
+                );
+            }
+        } catch (error) {
+            clearTimeout(timeoutId);
+            finish(false, error);
+        }
+    });
+}
+
+async function injectFocusOverlayIntoTab(tabId, url = "") {
+    if (!tabId) {
         return;
     }
 
+    let targetUrl = url;
+
+    if (!targetUrl) {
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            targetUrl = tab?.url || "";
+        } catch {
+            return;
+        }
+    }
+
+    if (!canInjectOverlayIntoUrl(targetUrl)) {
+        return;
+    }
+
+    try {
+        await chrome.tabs.sendMessage(tabId, {
+            type: "refreshStudyStreakOverlay"
+        });
+        return;
+    } catch {
+        // The page may not have the content script yet, especially during navigation.
+    }
+
+    if (!chrome.scripting?.executeScript) {
+        try {
+            await executeLegacyOverlayScript(tabId);
+        } catch {
+            // Some pages reject extension injection; content_scripts handles future page loads.
+        }
+        return;
+    }
+
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ["focus_overlay.js"]
+        });
+        return;
+    } catch {
+        // Firefox can be fussier about extension-root paths, so try one more form.
+    }
+
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ["/focus_overlay.js"]
+        });
+        return;
+    } catch {
+        // Fall through to the Firefox legacy API if it is available.
+    }
+
+    try {
+        await executeLegacyOverlayScript(tabId);
+    } catch {
+        // Browser pages, PDFs, stores, and protected pages can reject injection.
+    }
+}
+
+function scheduleOverlayInjection(tabId, delayMs = 0) {
+    if (!tabId) {
+        return;
+    }
+
+    setTimeout(() => {
+        injectFocusOverlayIntoTab(tabId).catch(() => {});
+    }, delayMs);
+}
+
+async function injectFocusOverlayIntoOpenTabs() {
     const tabs = await chrome.tabs.query({});
 
     await Promise.all(
         tabs
             .filter((tab) => tab.id && canInjectOverlayIntoUrl(tab.url || ""))
             .map(async (tab) => {
-                try {
-                    await chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        files: ["focus_overlay.js"]
-                    });
-                } catch {
-                    // Some pages reject extension injection; content_scripts handles future page loads.
-                }
+                await injectFocusOverlayIntoTab(tab.id, tab.url || "");
             })
     );
 }
@@ -990,6 +1474,15 @@ function getStrictFocusRedirectUrl(allowedDomains) {
         redirectDomain.startsWith("https://")
         ? redirectDomain
         : `https://${redirectDomain}`;
+}
+
+function getStrictFocusBlockedUrl(redirectUrl, subject) {
+    const params = new URLSearchParams({
+        redirect: redirectUrl,
+        subject: String(subject || "your focus session")
+    });
+
+    return chrome.runtime.getURL(`strict_focus_blocked.html?${params.toString()}`);
 }
 
 function strictFocusRedirectIsPending(tabId) {
@@ -1467,6 +1960,10 @@ async function restoreExtension() {
             periodInMinutes: 1
         });
     }
+
+    if (settings.focusActive || (settings.serverToken && settings.todoOverlayEnabled !== false)) {
+        await injectFocusOverlayIntoOpenTabs();
+    }
 }
 
 chrome.runtime.onInstalled.addListener(restoreExtension);
@@ -1486,17 +1983,46 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
-chrome.tabs.onActivated.addListener(() => {
+chrome.tabs.onActivated.addListener((activeInfo) => {
     refreshFocusState().catch(() => {});
     enforceStrictFocus().catch(() => {});
+    injectFocusOverlayIntoTab(activeInfo.tabId).catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.url || changeInfo.status === "complete") {
+    if (changeInfo.url || changeInfo.status === "loading" || changeInfo.status === "complete") {
         refreshFocusState().catch(() => {});
         enforceStrictFocus().catch(() => {});
+        injectFocusOverlayIntoTab(tabId).catch(() => {});
+
+        if (changeInfo.status !== "complete") {
+            scheduleOverlayInjection(tabId, 750);
+        }
     }
 });
+
+if (chrome.webNavigation?.onCommitted) {
+    chrome.webNavigation.onCommitted.addListener((details) => {
+        if (details.frameId !== 0) {
+            return;
+        }
+
+        refreshFocusState().catch(() => {});
+        injectFocusOverlayIntoTab(details.tabId, details.url).catch(() => {});
+        scheduleOverlayInjection(details.tabId, 300);
+    });
+}
+
+if (chrome.webNavigation?.onDOMContentLoaded) {
+    chrome.webNavigation.onDOMContentLoaded.addListener((details) => {
+        if (details.frameId !== 0) {
+            return;
+        }
+
+        injectFocusOverlayIntoTab(details.tabId, details.url).catch(() => {});
+        scheduleOverlayInjection(details.tabId, 600);
+    });
+}
 
 chrome.tabs.onRemoved.addListener((tabId) => {
     strictFocusRedirects.delete(tabId);
@@ -1529,6 +2055,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             };
         }
 
+        if (message.type === "retryOfflineUploads") {
+            return await retryOfflineUploads();
+        }
+
         if (message.type === "saveSettings") {
             const nextSettings = { ...(message.settings || {}) };
             const shouldRefreshOverlays = (
@@ -1559,16 +2089,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const settings = await getSettings();
             const todoItems = cleanTodoItems(message.todoItems);
 
-            await chrome.storage.local.set({
-                todoItems
-            });
+            return await saveTodoItemsWithSync(todoItems, settings);
+        }
 
-            if (settings.serverToken) {
-                await uploadTodoItemsToServer(settings.serverToken, todoItems);
-            }
-
-            await injectFocusOverlayIntoOpenTabs();
-            return { ok: true };
+        if (message.type === "completeAllTodoItems") {
+            return await completeAllTodoItems();
         }
 
         if (message.type === "setTodoOverlayEnabled") {
@@ -1583,7 +2108,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
                 return await loginToServer(message.username || "", message.password || "");
             } catch(error) {
-                return { ok: false, error: error.message || "Login failed."};
+                await setSyncStatus("failed", friendlyNetworkError(error, "Login failed."));
+                return { ok: false, error: friendlyNetworkError(error, "Login failed.")};
             }
         }
         
@@ -1595,7 +2121,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
                 return await refreshSubjectsFromServer();
             } catch(error) {
-                return { ok: false, error: error.message || "Could not refresh subjects.", subjects: [] };
+                await setSyncStatus("failed", friendlyNetworkError(error, "Could not refresh subjects."));
+                return {
+                    ok: false,
+                    error: friendlyNetworkError(error, "Could not refresh subjects."),
+                    subjects: []
+                };
             }
         }
 
@@ -1606,7 +2137,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     message.websites || []
                 );
             } catch(error) {
-                return { ok: false, error: error.message || "Could not save focus websites." };
+                await setSyncStatus("failed", friendlyNetworkError(error, "Could not save focus websites."));
+                return {
+                    ok: false,
+                    error: friendlyNetworkError(error, "Could not save focus websites.")
+                };
             }
         }
 
@@ -1711,6 +2246,6 @@ async function enforceStrictFocus(settings = null) {
     });
 
     await chrome.tabs.update(tab.id, {
-        url: redirectUrl
+        url: getStrictFocusBlockedUrl(redirectUrl, settings.focusSubject)
     });
 }

@@ -9,9 +9,17 @@
         <main>
             <h1>Study &gt;_ Streak</h1>
 
+            <div id="sync-overview" class="sync-overview">
+                <div><strong>Server:</strong> <span id="server-status">Checking</span></div>
+                <div><strong>Account:</strong> <span id="sync-account-status">Logged out</span></div>
+                <div><strong>Sync:</strong> <span id="sync-status-label">Idle</span></div>
+                <button id="retry-sync-button" type="button">Retry Sync</button>
+            </div>
+
             <div class="popup-shell">
                 <nav class="side-tabs">
-                    <button class="side-tab-button active" data-tab="account">Account</button>
+                    <button class="side-tab-button active" data-tab="home">Home</button>
+                    <button class="side-tab-button" data-tab="account">Account</button>
                     <button class="side-tab-button" data-tab="reminder" disabled>Reminder</button>
                     <button class="side-tab-button" data-tab="focus" disabled>Focus</button>
                     <button class="side-tab-button" data-tab="todo" disabled>Todo</button>
@@ -19,9 +27,53 @@
                 </nav>
 
                 <div class="tab-content">
-                    <section class="tab-panel active" data-panel="account">
+                    <section class="tab-panel active" data-panel="home">
+                        <h2>Home</h2>
+
+                        <div class="home-card">
+                            <div id="home-kicker" class="home-kicker">Ready</div>
+                            <div id="home-title" class="home-title">Start a focus session</div>
+                            <p id="home-detail" class="home-detail">Choose a subject and start when you are ready.</p>
+                            <button id="home-primary-button" class="home-primary-button" type="button">Start Focus</button>
+                            <div class="home-secondary-actions">
+                                <button id="home-focus-setup-button" type="button">Focus Setup</button>
+                                <button id="home-todo-button" type="button">Todo List</button>
+                            </div>
+                        </div>
+
+                        <div class="home-grid" aria-label="StudyStreak status summary">
+                            <div class="home-mini">
+                                <strong>Subject</strong>
+                                <span id="home-subject">none</span>
+                            </div>
+                            <div class="home-mini">
+                                <strong>Mode</strong>
+                                <span id="home-mode">Custom</span>
+                            </div>
+                            <div class="home-mini">
+                                <strong>Todo</strong>
+                                <span id="home-todo-summary">0 tasks</span>
+                            </div>
+                            <div class="home-mini">
+                                <strong>Today</strong>
+                                <span id="home-today-summary">No sessions today</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="tab-panel" data-panel="account" hidden>
                         <h2>Account</h2>
                         <p id="account-status">Not logged in.</p>
+
+                        <div id="setup-guide" class="setup-guide">
+                            <strong>Quick setup</strong>
+                            <ol>
+                                <li data-step="login">Log in to your StudyStreak account.</li>
+                                <li data-step="subjects">Sync subjects from the terminal app.</li>
+                                <li data-step="websites">Choose a subject and save focus websites.</li>
+                                <li data-step="focus">Start a focus session.</li>
+                            </ol>
+                        </div>
 
                         <label>
                             Username

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>StudyStreak Strict Focus</title>
+        <style>
+            html {
+                font-family: Consolas, "Cascadia Mono", "Lucida Console", "Courier New", monospace;
+                background: #101010;
+                color: #fff8e8;
+            }
+
+            body {
+                display: grid;
+                min-height: 100vh;
+                margin: 0;
+                place-items: center;
+            }
+
+            main {
+                width: min(560px, calc(100vw - 48px));
+                border: 2px solid #6f9fbe;
+                background: #151515;
+                padding: 28px;
+                text-align: center;
+            }
+
+            h1 {
+                margin: 0 0 12px;
+                color: #6f9fbe;
+                font-size: 24px;
+            }
+
+            p {
+                margin: 10px 0;
+                line-height: 1.5;
+            }
+
+            a {
+                display: inline-block;
+                margin-top: 14px;
+                padding: 10px 16px;
+                border: 2px solid #6f9fbe;
+                background: #6f9fbe;
+                color: #111;
+                font-weight: 900;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Strict Focus</h1>
+            <p id="message">This page is outside your focus websites.</p>
+            <p>Sending you back to an allowed study website...</p>
+            <a id="open-link" href="#">Open allowed website</a>
+        </main>
+        <script src="strict_focus_blocked.js"></script>
+    </body>
+</html>
