@@ -88,9 +88,9 @@ Example topics:
 
 ```text
 Integration
-Circular motion (bane of my existance)
+Circular motion
 Databases
-Organic chemistry (bane of all my friends who takes chemistry's existance apparently)
+Organic chemistry
 ```
 
 ### Sessions
@@ -114,7 +114,7 @@ When you log a session or finish a focus session, you can add:
 - what topic you worked on
 - a short review note
 
-Those topics feed the Home review queue and weak-topic suggestions. This makes the app more useful over time without needing a separate revision tracker.
+Those topics feed the Home review queue and weak-topic suggestions.
 
 ### Timetable
 
@@ -141,7 +141,7 @@ It can:
 
 The leaderboard loads from the StudyStreak server and has Today, This week, and All time views.
 
-Rows show study minutes and current streak days, so users can see both effort and consistency.
+Rows show study minutes and current streak days.
 
 ### Achievements
 
@@ -339,7 +339,7 @@ STUDYSTREAK_DATA_DIR=/path/to/data
 
 StudyStreak stores local study data on your machine.
 
-When you use cloud sync, StudyStreak sends the data needed to keep the terminal app and browser extension connected. Profile backup data is encrypted before upload. Some browser-extension sync fields are stored plainly so the extension can read them, such as subjects, websites, topics, timetable sessions, todos, focus sessions, and focus-quality summaries.
+When you use cloud sync, StudyStreak sends the data needed to keep the terminal app and browser extension connected. Profile backup data is encrypted before upload. Some browser-extension sync fields are stored plainly so the extension can read them, such as subjects, websites, topics, timetable sessions, todos, focus sessions, and focus-quality summaries. Everything is encrypted and salted of course as a standard but nonetheless people may still bypass it somehow so make sure you don't put any genuine private sensitive information on here.
 
 The extension may collect page domain activity during an active focus session so it can calculate focused, distracted, and idle time. It does not need this tracking when focus mode is stopped.
 
@@ -414,7 +414,7 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 The backend creates and updates its SQLite tables on startup.
 
-## Troubleshooting
+## Troubleshooting / Error
 
 ### The terminal app has no browser subjects
 
@@ -456,4 +456,4 @@ You can also check inside `Settings > Updates`.
 
 ## Status
 
-StudyStreak is in active development. The goal is to stay terminal-focused while making setup, browser sync, focus tracking, and review workflows easier for everyday students.
+StudyStreak is still in semi pre release development. The goal is to make study tracking easier for us and more fun because apparently you decide to use a terminal tracker with browser extension instead of an actual app.
