@@ -2,10 +2,15 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.align import Align
-from datetime import date, timedelta
+from datetime import date
 import pwinput
 
-from studystreak.storage import load_data, save_data
+from studystreak.storage import (
+    calculate_streak_days,
+    load_data,
+    protect_streak_today,
+    save_data,
+)
 from studystreak.ui import plain_fire_art, coloured_fire_art, StudyStreakApp
 from studystreak.accounts import (
     create_account,
@@ -29,26 +34,9 @@ def main(ctx: typer.Context):
         study_app.run()
 
 
-def calculate_streak(data):
-    #calculate current study streak
-    study_dates = set()
-
-    for session in data["sessions"]:
-        study_dates.add(session["date"])
-
-    current_day = date.today()
-    streak_count = 0
-
-    while str(current_day) in study_dates:
-        streak_count += 1
-        current_day = current_day - timedelta(days=1)
-
-    return streak_count
-
-
 @app.command()
 def log(subject: str, minutes: int):
-    #log a session from command line
+    # Log a session from the command line.
     if minutes <= 0:
         console.print("[red]Minutes must be more than 0.[/red]")
         return
@@ -62,6 +50,7 @@ def log(subject: str, minutes: int):
     }
 
     data["sessions"].append(session)
+    protect_streak_today(data)
     save_data(data)
 
     console.print(f"[green]Logged {minutes} minutes of {subject} study.[/green]")
@@ -69,7 +58,7 @@ def log(subject: str, minutes: int):
 
 @app.command()
 def today():
-    #show today's study sessions
+    # Show today's study sessions.
     data = load_data()
     today_date = str(date.today())
 
@@ -94,9 +83,9 @@ def today():
 
 @app.command()
 def streak():
-    #show current study streak
+    # Show current study streak.
     data = load_data()
-    streak_count = calculate_streak(data)
+    streak_count = calculate_streak_days(data.get("streak_days", []))
 
     if streak_count == 0:
         message = f"""
@@ -140,14 +129,14 @@ Great work. Your consistency is building.
 
 @app.command()
 def ui():
-    #open StudyStreak in Textual
+    # Open StudyStreak in Textual.
     study_app = StudyStreakApp()
     study_app.run()
 
 
 @app.command()
 def create_user(username: str, display_name: str = ""):
-    #create a local encrypted StudyStreak account
+    # Create a local encrypted StudyStreak account.
     password = pwinput.pwinput(prompt="Password: ", mask="*")
     confirm_password = pwinput.pwinput(prompt="Confirm Password: ", mask="*")
 
@@ -170,7 +159,7 @@ def create_user(username: str, display_name: str = ""):
 
 @app.command()
 def login(username: str):
-    #test login for a local StudyStreak account
+    # Test login for a local StudyStreak account.
     password = pwinput.pwinput(prompt="Password: ", mask="*")
 
     try:
@@ -188,7 +177,7 @@ def login(username: str):
 
 @app.command()
 def logout():
-    #logout of the current account
+    # Log out of the current account.
     logout_account()
     clear_session()
     console.print("[yellow]Logged out.[/yellow]")
@@ -196,7 +185,7 @@ def logout():
 
 @app.command()
 def users():
-    #show local StudyStreak accounts
+    # Show local StudyStreak accounts.
     accounts = list_accounts()
     current_user = get_current_user()
 

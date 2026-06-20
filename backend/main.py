@@ -301,8 +301,8 @@ def delete_focus_session(
 
 
 @app.get("/leaderboard", response_model=list[LeaderboardEntry])
-def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
-    #get leaderboard by focus minutes
+def leaderboard(period: str = "all", db: Session = Depends(get_db)):
+    # Get leaderboard rows for the selected period.
     query = (
         db.query(
             User.display_name,
@@ -324,10 +324,7 @@ def leaderboard(period: str = "all" , db: Session = Depends(get_db)):
         start_time = datetime(start_time.year, start_time.month, start_time.day)
         query = query.filter(FocusSession.created_at >= start_time)
     
-    elif period == "all":
-        pass
-
-    else:
+    elif period != "all":
         raise HTTPException(status_code=400, detail="Invalid Leaderboard period.")
     
 
