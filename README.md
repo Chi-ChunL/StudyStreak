@@ -4,9 +4,9 @@
 
 # StudyStreak
 
-StudyStreak is a terminal-first study tracker for students who want a simple place to plan work, start focused sessions, protect a daily streak, and review what they actually studied.
+StudyStreak is a terminal based (sort of) study tracker for students who want a simple place to plan work, start focused sessions and do all sort of things that you can normally do in a productiivity app but this time its in terminal and it also has a browser extension.
 
-It includes a Textual terminal app, cloud sync, subject/topic tracking, review notes, a timetable, achievements, and a companion browser extension for Chrome, Firefox, and Zen.
+It has some stuff like textual terminal app, cloud syncing across devices, subject/topic tracking, review notes, a timetable, achievements, and a companion browser extension for Chrome, Firefox, and Zen.
 
 ## Preview
 
@@ -16,7 +16,7 @@ It includes a Textual terminal app, cloud sync, subject/topic tracking, review n
 
 ## Install The Terminal App
 
-StudyStreak requires Python 3.10 or newer.
+StudyStreak requires Python 3.10 or newer, unfortunate for those of you who are a fossil apparently.
 
 ```bash
 pip install studystreak
@@ -34,7 +34,7 @@ You can also launch it explicitly:
 studystreak ui
 ```
 
-Update later:
+Update with this command:
 
 ```bash
 pip install --upgrade studystreak
@@ -43,15 +43,15 @@ pip install --upgrade studystreak
 ## First Setup
 
 1. Open `studystreak`.
-2. Create an account or log in.
-3. Choose whether to start the optional guided tour.
+2. Create an account or log in in my very simplistic login screen.
+3. Choose whether to start the optional guided tour(recommended if you do not know what you are doing).
 4. Go to `Settings > Subjects`.
 5. Add your subjects, study websites, and topics.
 6. Press `Settings > Sync > Sync Now`.
 7. Install the browser extension and log in with the same account.
 8. Use Home, Sessions, Timetable, or Focus to start studying.
 
-The app still works locally, but logging in enables cloud sync, browser extension sync, leaderboard data, cross-device setup, and browser focus-quality summaries.
+The app still mostly works locally, but logging in enables cloud sync, browser extension sync, leaderboard data, cross-device setup, and browser focus-quality summaries etc. So just connect to the internet is your best option.
 
 ## Main App
 
@@ -67,14 +67,14 @@ Home is the quick command center. It shows:
 
 ### Subjects
 
-Subjects are the base of the app. Each subject can have:
+Subjects are the main use for this app unless you use it for building up habit for a hobby then ig it can still be useful. Each subject can have:
 
 - study websites
 - topics
 - study history
 - focus-quality summaries from the browser extension
 
-Use `Settings > Subjects` to add, edit, or delete subjects. Websites and topics sync to the browser extension.
+Use `Settings > Subjects` to add, edit, or delete subjects. Websites and topics are always sync to the browser extension so no worries about discrepency mostly.
 
 Example websites:
 
@@ -88,9 +88,9 @@ Example topics:
 
 ```text
 Integration
-Circular motion
+Circular motion (bane of my existance)
 Databases
-Organic chemistry
+Organic chemistry (bane of all my friends who takes chemistry's existance apparently)
 ```
 
 ### Sessions
