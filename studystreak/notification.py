@@ -12,7 +12,6 @@ SOUND_FILES = {
 
 
 def play_sound(sound_name, wait=False):
-    # Play a short app sound; use wait=True when the sound must not be interrupted.
     sound_file = SOUND_FILES.get(sound_name)
 
     if sound_file is None:

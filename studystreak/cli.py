@@ -28,7 +28,6 @@ console = Console()
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
-    # Make the PyPI command feel like an app launcher.
     if ctx.invoked_subcommand is None:
         study_app = StudyStreakApp()
         study_app.run()
@@ -36,7 +35,7 @@ def main(ctx: typer.Context):
 
 @app.command()
 def log(subject: str, minutes: int):
-    # Log a session from the command line.
+    #log a session from the command line.
     if minutes <= 0:
         console.print("[red]Minutes must be more than 0.[/red]")
         return
@@ -58,7 +57,7 @@ def log(subject: str, minutes: int):
 
 @app.command()
 def today():
-    # Show today's study sessions.
+    #show today's study sessions.
     data = load_data()
     today_date = str(date.today())
 
@@ -83,7 +82,7 @@ def today():
 
 @app.command()
 def streak():
-    # Show current study streak.
+    #show current study streak.
     data = load_data()
     streak_count = calculate_streak_days(data.get("streak_days", []))
 
@@ -129,14 +128,14 @@ Great work. Your consistency is building.
 
 @app.command()
 def ui():
-    # Open StudyStreak in Textual.
+    #open StudyStreak in Textual.
     study_app = StudyStreakApp()
     study_app.run()
 
 
 @app.command()
 def create_user(username: str, display_name: str = ""):
-    # Create a local encrypted StudyStreak account.
+    #create a local encrypted StudyStreak account.
     password = pwinput.pwinput(prompt="Password: ", mask="*")
     confirm_password = pwinput.pwinput(prompt="Confirm Password: ", mask="*")
 
@@ -159,7 +158,7 @@ def create_user(username: str, display_name: str = ""):
 
 @app.command()
 def login(username: str):
-    # Test login for a local StudyStreak account.
+    #test login for a local StudyStreak account.
     password = pwinput.pwinput(prompt="Password: ", mask="*")
 
     try:

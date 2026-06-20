@@ -451,7 +451,7 @@ def upload_timetable(token: str, timetable: list[dict]) -> None:
 
 
 def get_focus_quality_sessions(token: str) -> list[dict]:
-    #download rich Chrome focus-quality summaries for the logged-in user
+    #download rich Chrome focus quality summaries for the logged in user
     try:
         response = requests.get(
             f"{BASE_URL}/focus-quality-sessions",
