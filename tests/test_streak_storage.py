@@ -57,6 +57,17 @@ class StreakStorageTests(unittest.TestCase):
             "completed_at": completed_at,
         }
 
+    def make_signed_focus_summary(self, completed_at, secret="test-secret"):
+        payload = {
+            **self.make_chrome_session(completed_at),
+            "source": "chrome_extension",
+        }
+
+        return {
+            "payload": payload,
+            "signature": self.storage.sign_focus_summary(payload, secret),
+        }
+
     def test_protect_streak_today_is_idempotent(self):
         data = self.storage.get_default_data()
 
@@ -142,6 +153,61 @@ class StreakStorageTests(unittest.TestCase):
         self.storage.protect_streak_today(data)
 
         self.assertEqual(data["streak_days"], [self.storage.get_today_text()])
+
+    def test_manual_import_skips_session_already_synced_from_server(self):
+        completed_at = datetime.now().astimezone().isoformat()
+        data = self.storage.get_default_data()
+        data["focus_import_settings"]["secret"] = "test-secret"
+        data["sessions"] = [
+            {
+                "subject": "computer science",
+                "minutes": 1,
+                "date": self.storage.get_today_text(),
+                "source": "chrome_extension",
+                "completed_at": completed_at,
+                "cloud_focus_session_id": "42",
+            }
+        ]
+        self.storage.save_local_data_without_sync(data)
+
+        with self.assertRaisesRegex(ValueError, "already synced"):
+            self.storage.save_focus_quality_session(
+                self.make_signed_focus_summary(completed_at)
+            )
+
+        saved = self.storage.load_data()
+        self.assertEqual(len(saved["sessions"]), 1)
+        self.assertEqual(saved["focus_quality_sessions"], [])
+
+    def test_server_focus_session_merges_with_manual_browser_session(self):
+        completed_at = datetime.now().astimezone().isoformat()
+        data = self.storage.get_default_data()
+        data["sessions"] = [
+            {
+                "subject": "computer science",
+                "minutes": 1,
+                "date": self.storage.get_today_text(),
+                "source": "chrome_extension",
+                "completed_at": completed_at,
+            }
+        ]
+
+        updates = self.storage.merge_cloud_focus_sessions(
+            data,
+            [
+                {
+                    "id": 42,
+                    "subject": "computer science",
+                    "minutes": 1,
+                    "completed_at": completed_at,
+                    "source": "chrome_extension",
+                }
+            ],
+        )
+
+        self.assertEqual(updates, 1)
+        self.assertEqual(len(data["sessions"]), 1)
+        self.assertEqual(data["sessions"][0]["cloud_focus_session_id"], "42")
 
     def test_server_subject_websites_fill_local_subject_settings(self):
         data = self.storage.get_default_data()

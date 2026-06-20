@@ -358,6 +358,20 @@ def merge_todo_items(data, server_todo_items):
 
     return updates
 
+def is_browser_focus_session(session):
+    return (
+        isinstance(session, dict)
+        and session.get("source") == "chrome_extension"
+        and str(session.get("completed_at", "")).strip() != ""
+    )
+
+def get_browser_focus_sessions_by_completed_at(data):
+    return {
+        str(session.get("completed_at")).strip(): session
+        for session in data.get("sessions", [])
+        if is_browser_focus_session(session)
+    }
+
 def merge_cloud_focus_sessions(data, server_sessions):
     data = repair_data(data)
 
@@ -369,6 +383,7 @@ def merge_cloud_focus_sessions(data, server_sessions):
         for session in data.get("sessions", [])
         if session.get("cloud_focus_session_id") is not None
     }
+    existing_by_completed_at = get_browser_focus_sessions_by_completed_at(data)
     updates = 0
 
     for server_session in server_sessions:
@@ -416,11 +431,15 @@ def merge_cloud_focus_sessions(data, server_sessions):
         if note:
             next_session["note"] = note
 
-        existing_session = existing_by_id.get(cloud_id)
+        existing_session = (
+            existing_by_id.get(cloud_id)
+            or existing_by_completed_at.get(completed_at)
+        )
 
         if existing_session is None:
             data["sessions"].append(next_session)
             existing_by_id[cloud_id] = next_session
+            existing_by_completed_at[completed_at] = next_session
             updates += 1
             continue
 
@@ -445,6 +464,8 @@ def merge_cloud_focus_sessions(data, server_sessions):
                 changed = True
 
         if changed:
+            existing_by_id[cloud_id] = existing_session
+            existing_by_completed_at[completed_at] = existing_session
             updates += 1
 
     if updates > 0:
@@ -799,12 +820,7 @@ def focus_quality_session_protects_today(session):
 
 
 def merge_focus_quality_study_sessions(data, focus_quality_sessions):
-    existing_sessions_by_completed_at = {
-        session.get("completed_at"): session
-        for session in data.get("sessions", [])
-        if session.get("source") == "chrome_extension"
-        and session.get("completed_at")
-    }
+    existing_sessions_by_completed_at = get_browser_focus_sessions_by_completed_at(data)
     changed_count = 0
 
     sorted_focus_sessions = sorted(
@@ -850,14 +866,28 @@ def save_focus_quality_session(raw_summary):
     secret = data.get("focus_import_settings", {}).get("secret", "")
     raw_summary = unwrap_signed_focus_summary(raw_summary, secret)
     session = normalise_focus_quality_session(raw_summary)
+    completed_at = session["completed_at"]
+
+    if completed_at in get_browser_focus_sessions_by_completed_at(data):
+        raise ValueError(
+            "This browser focus session is already synced. Manual import skipped."
+        )
 
     existing_sessions = data.get("focus_quality_sessions", [])
+    if any(
+        existing.get("completed_at") == completed_at
+        for existing in existing_sessions
+    ):
+        raise ValueError(
+            "This browser focus summary is already imported. Manual import skipped."
+        )
+
     data["focus_quality_sessions"] = [
         session,
         *[
             existing
             for existing in existing_sessions
-            if existing.get("completed_at") != session["completed_at"]
+            if existing.get("completed_at") != completed_at
         ],
     ][:20]
 
