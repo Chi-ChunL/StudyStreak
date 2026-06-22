@@ -16,7 +16,7 @@ It has some stuff like textual terminal app, cloud syncing across devices, subje
 
 ## Install The Terminal App
 
-StudyStreak requires Python 3.10 or newer, unfortunate for those of you who are a fossil apparently.
+StudyStreak requires Python 3.10 or newer:
 
 ```bash
 pip install studystreak
@@ -57,7 +57,7 @@ The app still mostly works locally, but logging in enables cloud sync, browser e
 
 ### Home
 
-Home is the quick command center. It shows:
+Home is the quick command center of the terminal app. It shows:
 
 - account, server, sync, streak, and weekly goal status
 - a next best action based on your recent study data
