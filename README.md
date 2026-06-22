@@ -4,7 +4,7 @@
 
 # StudyStreak
 
-StudyStreak is a terminal based (sort of) study tracker for students who want a simple place to plan work, start focused sessions and do all sort of things that you can normally do in a productiivity app but this time its in terminal and it also has a browser extension.
+StudyStreak is a mainly terminal based study tracker for students who want a simple place to plan work, start focused sessions and do all sort of things that you can normally do in a productiivity app but this time its in terminal and it also has a browser extension.
 
 It has some stuff like textual terminal app, cloud syncing across devices, subject/topic tracking, review notes, a timetable, achievements, and a companion browser extension for Chrome, Firefox, and Zen.
 
