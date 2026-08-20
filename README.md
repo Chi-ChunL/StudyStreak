@@ -457,3 +457,9 @@ You can also check inside `Settings > Updates`.
 ## Status
 
 StudyStreak is still in semi pre release development. The goal is to make study tracking easier for us and more fun because apparently you decide to use a terminal tracker with browser extension instead of an actual app.
+
+## License
+
+StudyStreak is released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Chi-Chun Lin
